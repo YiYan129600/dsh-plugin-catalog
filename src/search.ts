@@ -15,11 +15,18 @@
  *       the host route).
  *   L2  token match  — lowercase + non-alphanumeric tokenization, substring
  *       hits over the corpus (中文名/别名 > 描述 > keywords > moduleName > entryId).
+ *   L2.5 pinyin (v0.2.0 task 2) — hand-written static syllable table
+ *       (`src/pinyin.ts`, zero new dependencies): a latin-pinyin query such
+ *       as 「yuan cheng」 resolves to 远程 and 「kan ban」 to 看板 by
+ *       token-matching the query against the pinyin of the Chinese corpus
+ *       (aliases + nameZh + descZh/description).
  *   L3  subsequence  — character-subsequence scoring over moduleName +
  *       short name, tolerant of missing characters.
  *   L4  Fuse.js is intentionally NOT pulled in (size vs. value tradeoff,
  *       plan §5.3 "可选").
  */
+import { pinyinForText } from './pinyin.ts'
+
 export type CatalogSourceKind = 'registry' | 'github' | 'link' | 'in-box' | 'unknown'
 
 /** The wire projection the host `PluginMetaService.list()` returns per Loader entry. */
@@ -305,6 +312,32 @@ function scoreEntry(entry: CatalogEntryLike, query: string, table: readonly Buil
       if (tokenMeaningful(token) && text.includes(token)) {
         score += weight
         matchedFields.add(field)
+      }
+    }
+  }
+
+  // L2.5 — pinyin (v0.2.0 task 2): a latin-pinyin query addresses the
+  // Chinese corpus (aliases + nameZh + descZh/description) through the
+  // hand-written static syllable table. 「yuan cheng」→ 远程, 「kan ban」→
+  // 看板. Each matched pinyin token adds a fixed score and records the
+  // `pinyin` field for highlighting-eligibility reporting.
+  {
+    const zhCorpus = [
+      ...aliasesFor(entry.moduleName, table),
+      corpus.nameZh,
+      corpus.description,
+    ].filter((part) => part !== '').join(' ')
+    if (zhCorpus !== '') {
+      const pinyin = pinyinForText(zhCorpus)
+      if (pinyin !== '') {
+        let pinyinHits = 0
+        for (const token of tokens) {
+          if (tokenMeaningful(token) && pinyin.includes(token)) pinyinHits += 1
+        }
+        if (pinyinHits > 0) {
+          score += 250 * pinyinHits
+          matchedFields.add('pinyin')
+        }
       }
     }
   }

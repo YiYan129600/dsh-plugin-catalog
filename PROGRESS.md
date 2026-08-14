@@ -1,5 +1,33 @@
 # dsh-plugin-catalog — PROGRESS
 
+## 任务 2 完成（v0.2.0 轮，2026-02-23）— 拼音搜索 + 分类 chips + 导出 dsh.plugin 片段 + 公约文档与无依赖校验器，验收全绿
+
+### 交付
+
+- `src/pinyin.ts`（双半共用纯模块）：**自写静态音节表 `PINYIN_SYLLABLE_TABLE` 458 字**（零新依赖、无字典包、无网络），覆盖本项目语料全部 419 个汉字（别名词表 + 内置中文表 nameZh/descZh）+ 常用基础字；`pinyinForText` 把中文转空格分隔音节（ASCII 字母串按词透传，表外汉字丢弃，`table` 参数可注入空表供反向验证）。
+- `src/search.ts` 新增 **L2.5 拼音层**：查询 token 与「别名 + nameZh + descZh/description」的拼音串做子串匹配，`yuan cheng`→远程（dsh-ssh）、`kan ban`→看板（task-board），每 token 命中 +250 分、记 `pinyin` 字段；既有 L1/L2/L3 测试全部不受影响。
+- `src/categories.ts`：静态分类器 `CATEGORY_DEFS`（remote/ui/pets/ops/design 必备五类 + ai/web/storage）+ `classifyEntry`（同搜索语料：moduleName/缩略名/别名/keywords/描述/中文名，CJK 关键词子串、短拉丁词整词匹配防 `ui` 误中 `gui`）+ `filterByCategory`。
+- `src/plugin-manifest.ts`：**无依赖手写校验器** `validateDshPluginManifest` / `validateDshPluginField`（bilingual 对象 + 字符串数组校验，缺失按 package.json 顶层 name/description 回退，未知键容忍，字段级中文错误信息）+ 导出片段构建 `buildPluginManifestSnippet`（displayName/description 取自内置中文表>AI 摘要与 meta，categories 来自分类器，aliases 来自别名词表）+ `stringifyPluginManifest`。
+- `docs/dsh-plugin-convention.md`：dsh.plugin 元数据公约文档（字段表/分类 id/别名三层来源/校验器用法/正反例/反哺闭环）。
+- 客户端 `src/client/index.tsx`：工具栏分类 chips（含每类计数、点选过滤与搜索取交集、再点或「清除筛选」取消、空分类提示文案）；展开区「导出 dsh.plugin 片段」按钮（构建片段 → 剪贴板复制 → 2.5s「已复制」反馈 + 片段 JSON 预览）；`package.json` files 加 `docs`（公约随包发布）。
+- 测试：`tests/task2.test.mjs` **17 用例**（音节表 ≥150 且含远/程/看/板、pinyinForText 转换与透传、yuan cheng 命中且第一、kan ban 命中且第一、nameZh/descZh 拼音命中、空表=零音节机制、五必备分类、四例静态分类、filterByCategory 过滤、未知分类空列表、导出结构取自 meta+summary、导出 JSON 往返、导出片段通过校验器自洽闭环、完整正例、空对象/最小+顶层回退、非对象反例、字段级错误反例）。
+- 验收全绿：`pnpm test` **123/123、skip 0**（9 文件：基线 106 + task2 17）；`pnpm build` 产物 lib/index.js（103.8 kB）+ lib/client.js（99.0 kB）存在；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错（19 文件、212.2 kB，含 src/pinyin.ts、src/categories.ts、src/plugin-manifest.ts、docs/dsh-plugin-convention.md）。
+- 反向验证（红→绿，证据见会话记录）：把 `PINYIN_SYLLABLE_TABLE` 注入为空 `{}` → **4 用例红**（音节表 ≥150、yuan cheng、kan ban、ku xuan，`expected [] to include '@linxin666/dsh-ssh'`，119/123）；还原 → 123/123 全绿。
+- git：本轮改动 = `src/pinyin.ts`、`src/categories.ts`、`src/plugin-manifest.ts`、`tests/task2.test.mjs`、`docs/dsh-plugin-convention.md`（新）+ `src/search.ts`、`src/client/index.tsx`、`src/index.ts`、`package.json`（files 加 docs），已提交。推送与 tag v0.2.0 属任务 3 收尾。
+
+### 决策记录（为什么这么走）
+
+- **拼音表键用「字→音节」而非「词→拼音」**：自写表只存单字映射（零依赖、可静态校验），多字词的拼音由逐字拼接；匹配层只做 token 子串，天然容忍多音字/分词差异，也便于覆盖度断言（语料 419 字全覆盖，另有覆盖度校验脚本）。
+- **拼音匹配权重 250/命中**：低于 L1 精确别名（700–1000）、高于描述 L2（100），保证「yuan cheng」时 dsh-ssh（500）稳居第一；task-board 因别名「日程」(ri cheng) 被 'cheng' 部分命中得 250 属诚实模糊行为（非误伤英文，测试断言第一命中 + 包含关系）。
+- **ASCII 透传按词拼接（非逐字母）**：初版逐字母打散成 `k a n b a n` 污染音节流且无匹配价值，改为字母串整体透传（`ssh`→ssh）；长度 ≥2 的 token 才能匹配，单字母噪声不会误命中。
+- **分类器与搜索共用同一语料**：chips 与搜索对「这个插件是什么」的判断一致；`ui`/`ai`/`web`/`pet` 等 ≤2 字母关键词按整词匹配（`ui` 不误中 `gui`），CJK 关键词子串匹配。
+- **校验器与导出片段共用 `DshPluginManifest` 形状**：导出片段必过校验器（测试闭环），公约文档正反例与校验器错误信息一一对应。
+- **未新增任何依赖**：pinyin/categories/plugin-manifest 三个纯模块零 import 外部包；package.json 仅 files 加 `docs`。
+
+### 下一任务
+
+- 任务 3：版本升 0.2.0；README 更新（汉化开关/翻译授权/拼音/chips/导出）；PROGRESS.md 终态；BLOCKED.md 汇总；全量验收重跑；git 提交并推送 + tag v0.2.0（推完 remote 干净）；远端 main=本地 HEAD。
+
 ## 任务 1 完成（v0.2.0 轮，2026-02-23）— 汉化开关 + 翻译授权 + 内置中文表，验收全绿
 
 ### 交付

@@ -43,6 +43,8 @@ import {
   readTranslateOptIn,
   type TranslateOptIn,
 } from '../localize.ts'
+import { CATEGORY_DEFS, classifyEntry } from '../categories.ts'
+import { buildPluginManifestSnippet, stringifyPluginManifest } from '../plugin-manifest.ts'
 
 /** The host `/api/plugin-catalog/list` payload. */
 export interface PluginCatalogListResponse {
@@ -201,6 +203,11 @@ const STYLE_CSS = `
 .dpc-chips{display:flex;gap:8px;flex-wrap:wrap}
 .dpc-chip{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:26px;border-radius:999px;padding:0 12px;cursor:pointer}
 .dpc-chip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
+.dpc-category-chips{display:flex;gap:8px;flex-wrap:wrap}
+.dpc-category-chip{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:26px;border-radius:999px;padding:0 12px;cursor:pointer}
+.dpc-category-chip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
+.dpc-category-chip[data-active=true]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}
+.dpc-category-chip .dpc-chip-count{color:var(--dsw-alias-label-tertiary);font-size:11px;margin-left:4px;font-variant-numeric:tabular-nums}
 .dpc-mark{background:color-mix(in srgb,var(--dsw-alias-state-warning-primary) 32%,transparent);border-radius:3px;padding:0 1px}
 .dpc-localize-toggle{display:flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:34px;border-radius:8px;padding:0 12px;cursor:pointer;white-space:nowrap;user-select:none}
 .dpc-localize-toggle input{accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;margin:0}
@@ -276,6 +283,16 @@ function PluginCard({
   const phase = entry.fiberPhase ?? 'unobserved'
   const statusLabel = FIBER_PHASE_LABELS[phase] ?? phase
   const detailId = `dpc-details-${encodeURIComponent(entry.entryId)}`
+
+  // Task 2: 导出 dsh.plugin 片段 — build the JSON snippet from meta + summary
+  // and copy it; show the snippet while the "已复制" feedback is live.
+  const [manifestCopied, setManifestCopied] = useState(false)
+  const manifestSnippet = useMemo(() => stringifyPluginManifest(buildPluginManifestSnippet(entry)), [entry])
+  const copyManifest = (): void => {
+    navigator.clipboard?.writeText(manifestSnippet).catch(() => undefined)
+    setManifestCopied(true)
+    window.setTimeout(() => setManifestCopied(false), 2500)
+  }
 
   // Update badge (plan §5.6: ↑latest when an update is available; never a
   // wrong "最新" — probe failure shows 无法检查 instead).
@@ -379,7 +396,17 @@ function PluginCard({
                         : '翻译此插件'}
               </button>
             )}
+            <button type="button" onClick={copyManifest}>
+              {manifestCopied ? '已复制' : '导出 dsh.plugin 片段'}
+            </button>
           </div>
+
+          {manifestCopied && (
+            <div className="dpc-command">
+              <code>{manifestSnippet}</code>
+              <p>已复制到剪贴板。将此片段粘贴进插件的 package.json 的 dsh.plugin 字段即可反哺公约（见 docs/dsh-plugin-convention.md）。</p>
+            </div>
+          )}
 
           {updateState.status === 'checked' && updateEntry?.status === 'update-available' && (
             <p className="dpc-hint">发现新版本 v{updateEntry.currentVersion ?? ''} → v{updateEntry.latestVersion ?? ''}，点击「更新此插件」获取命令。</p>
@@ -419,6 +446,8 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
   const [debounced, setDebounced] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [layout, setLayout] = useState<Layout>(readLayout)
+  // Task 2: 分类 chips 过滤 — one selected category id (null = no filter).
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   // Task 4: update checks + AI summary state machines, keyed by entryId.
   const [updates, setUpdates] = useState<Record<string, UpdateUiState>>({})
   const [summaries, setSummaries] = useState<Record<string, SummaryUiState>>({})
@@ -481,10 +510,22 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
     if (state.status === 'ready') runCheckUpdates(false)
   }, [state.status, runCheckUpdates])
 
-  const results = useMemo(
-    () => (state.status === 'ready' ? searchPlugins(state.entries, debounced, state.aliases) : []),
-    [state, debounced],
-  )
+  const results = useMemo(() => {
+    if (state.status !== 'ready') return []
+    const hits = searchPlugins(state.entries, debounced, state.aliases)
+    // 分类 chips 过滤：与搜索取交集（点 chip 过滤列表，再点取消）。
+    if (selectedCategory === null) return hits
+    return hits.filter((hit) => classifyEntry(hit.entry, state.aliases).includes(selectedCategory))
+  }, [state, debounced, selectedCategory])
+  // Per-category counts over ALL entries (chips stay honest while searching).
+  const categoryCounts = useMemo(() => {
+    if (state.status !== 'ready') return new Map<string, number>()
+    const counts = new Map<string, number>()
+    for (const entry of state.entries) {
+      for (const id of classifyEntry(entry, state.aliases)) counts.set(id, (counts.get(id) ?? 0) + 1)
+    }
+    return counts
+  }, [state])
   const suggestions = useMemo(
     () => (
       state.status === 'ready' && debounced.trim() !== '' && results.length === 0
@@ -669,6 +710,34 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
             <span className="dpc-count" data-plugin-count={results.length}>{results.length} 个</span>
           </div>
 
+          {/* Task 2: 分类 chips — static classifier (remote/ui/pets/ops/design…),
+              one click filters the list, click again (or 清除筛选) to reset. */}
+          <div className="dpc-category-chips" role="group" aria-label="按分类筛选插件">
+            {CATEGORY_DEFS.map((def) => {
+              const count = categoryCounts.get(def.id) ?? 0
+              if (count === 0) return null
+              return (
+                <button
+                  key={def.id}
+                  type="button"
+                  className="dpc-category-chip"
+                  data-active={selectedCategory === def.id ? 'true' : undefined}
+                  aria-pressed={selectedCategory === def.id}
+                  title={`筛选「${def.label}」分类（${count} 个）`}
+                  onClick={() => setSelectedCategory((current) => (current === def.id ? null : def.id))}
+                >
+                  {def.label}
+                  <span className="dpc-chip-count">{count}</span>
+                </button>
+              )
+            })}
+            {selectedCategory !== null && (
+              <button type="button" className="dpc-chip" onClick={() => setSelectedCategory(null)}>
+                清除筛选
+              </button>
+            )}
+          </div>
+
           {showTranslateDialog && (
             <div className="dpc-overlay" role="dialog" aria-modal="true" aria-label={TRANSLATE_DIALOG_COPY.title}>
               <div className="dpc-dialog">
@@ -692,10 +761,16 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
           )}
 
           {state.entries.length === 0 && <p className="dpc-status">暂无插件。</p>}
-          {state.entries.length > 0 && debounced.trim() !== '' && results.length === 0 && (
+          {state.entries.length > 0 && results.length === 0 && (
             <div className="dpc-no-result">
-              <p>没有匹配「{debounced}」的插件。</p>
-              {suggestions.length > 0 && (
+              <p>
+                {debounced.trim() !== ''
+                  ? `没有匹配「${debounced}」的插件。`
+                  : selectedCategory !== null
+                    ? `「${CATEGORY_DEFS.find((def) => def.id === selectedCategory)?.label ?? selectedCategory}」分类下暂无匹配插件。`
+                    : '暂无插件。'}
+              </p>
+              {debounced.trim() !== '' && suggestions.length > 0 && (
                 <div className="dpc-suggestions">
                   <strong>最接近的建议：</strong>
                   {suggestions.map((suggestion) => (
@@ -705,11 +780,13 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
                   ))}
                 </div>
               )}
-              <div className="dpc-chips">
-                {QUICK_CHIP_QUERIES.map((chip) => (
-                  <button key={chip} type="button" className="dpc-chip" onClick={() => setQuery(chip)}>{chip}</button>
-                ))}
-              </div>
+              {debounced.trim() !== '' && (
+                <div className="dpc-chips">
+                  {QUICK_CHIP_QUERIES.map((chip) => (
+                    <button key={chip} type="button" className="dpc-chip" onClick={() => setQuery(chip)}>{chip}</button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

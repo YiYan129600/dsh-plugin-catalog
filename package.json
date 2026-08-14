@@ -57,6 +57,7 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "src",
+    "docs",
     "cordis.patch.yml"
   ],
   "license": "Apache-2.0",
