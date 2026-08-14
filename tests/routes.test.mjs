@@ -39,13 +39,23 @@ function responseDouble() {
   }
 }
 
-describe('catalog list route (task 3 transport)', () => {
-  it('exposes the list endpoint under /api/plugin-catalog/list', () => {
+describe('catalog route family (task 3 transport + task 4 summary/update routes)', () => {
+  it('exposes the list endpoint and the task-4 routes under /api/plugin-catalog', () => {
     expect(CATALOG_PATHS.list).toBe('/api/plugin-catalog/list')
+    expect(CATALOG_PATHS.updates).toBe('/api/plugin-catalog/updates')
+    expect(CATALOG_PATHS.summary).toBe('/api/plugin-catalog/summary')
+    expect(CATALOG_PATHS.summaryEstimate).toBe('/api/plugin-catalog/summary/estimate')
+    expect(CATALOG_PATHS.update).toBe('/api/plugin-catalog/update')
     const routes = makeCatalogRoutes({ fence: () => true, list: () => ({ entries: [] }) })
-    expect(routes).toHaveLength(1)
-    expect(routes[0].kind).toBe('exact')
-    expect(routes[0].path).toBe(CATALOG_PATHS.list)
+    expect(routes).toHaveLength(5)
+    expect(routes.map((route) => route.path)).toEqual([
+      CATALOG_PATHS.list,
+      CATALOG_PATHS.updates,
+      CATALOG_PATHS.summaryEstimate,
+      CATALOG_PATHS.summary,
+      CATALOG_PATHS.update,
+    ])
+    expect(routes.every((route) => route.kind === 'exact')).toBe(true)
   })
 
   it('serves the plugin list projection to a trusted loopback client', async () => {

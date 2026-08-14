@@ -9,17 +9,22 @@
  * bundle degrades to `meta: null` (plan §5.1), so a broken plugin row still
  * renders with the current fallback style.
  *
- * Task 4 adds SummaryService / UpdateCheckService / UpdateRunner here.
+ * Task 4 adds SummaryService (plan §5.5: README → user model → cached AI
+ * summary) and UpdateCheckService + UpdateRunner (plan §5.6: npm first /
+ * GitHub fallback / link not checked / 24h cache / command generation only),
+ * both exposed through the same loopback-fenced HTTP route family.
  */
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { buildPluginMeta, readPackageJson, readSummariesCache, type PluginInventoryEntry, type PluginMeta, type PluginSummary } from './meta.ts'
 import { normalizeUserAliases, type BuiltinAliasEntry } from './search.ts'
 import { isTrustedApiRequest, makeCatalogRoutes, type ApiRequestLike } from './routes.ts'
+import { SummaryService } from './summary.ts'
+import { UpdateCheckService, buildUpdateCommand, restartCommand } from './update.ts'
 
 // Re-export the pure helpers: the vitest suite asserts search/route behavior
 // (task 3 acceptance) against the built bundle, and the client-facing
@@ -27,6 +32,8 @@ import { isTrustedApiRequest, makeCatalogRoutes, type ApiRequestLike } from './r
 export * from './meta.ts'
 export * from './search.ts'
 export * from './routes.ts'
+export * from './summary.ts'
+export * from './update.ts'
 
 /**
  * Minimal structural view of the Cordis Loader surface this service reads.
@@ -197,9 +204,26 @@ function readUserAliases(): BuiltinAliasEntry[] {
   }
 }
 
-/** Host plugin body: register the metadata service and the loopback-fenced list route. */
+/** Host plugin body: register the metadata service and the loopback-fenced routes. */
 export function apply(ctx: import('@deepseek-ai/cordis').Context): void {
   ctx.plugin(PluginMetaService)
+
+  // Task 4 services: plain host services over injectable seams. SummaryService
+  // defaults to the DSH env API config (D7); UpdateCheckService reads package
+  // facts from PluginMetaService on every check (loader state is live).
+  const summaryService = new SummaryService()
+  const updatesService = new UpdateCheckService({
+    metaProvider: () => {
+      const service = getService(ctx, 'pluginMeta') as PluginMetaService | undefined
+      if (service === undefined) return []
+      return service.list().entries.map((entry) => ({
+        moduleName: entry.moduleName,
+        meta: entry.meta === null
+          ? null
+          : { sourceKind: entry.meta.sourceKind, version: entry.meta.version, repository: entry.meta.repository },
+      }))
+    },
+  })
 
   // The list route is a thin HTTP seam over the Typert service: the browser
   // half fetches `/api/plugin-catalog/list` (same-origin, loopback-fenced)
@@ -209,21 +233,61 @@ export function apply(ctx: import('@deepseek-ai/cordis').Context): void {
   // unavailable webServer never crashes the host.
   const webServer = (ctx as unknown as { webServer?: { register(route: unknown): () => void } }).webServer
   if (webServer === undefined) return
-  const getService = (ctx as unknown as { get(name: string): unknown }).get.bind(ctx)
   ctx.effect(() => {
     const disposers = makeCatalogRoutes({
       fence: (request: ApiRequestLike) => isTrustedApiRequest(request, []),
       list: async () => {
-        const service = getService('pluginMeta') as PluginMetaService | undefined
+        const service = getService(ctx, 'pluginMeta') as PluginMetaService | undefined
         if (service === undefined) return { entries: [] }
         return { entries: service.list().entries, aliases: readUserAliases() }
+      },
+      // AI summary (plan §5.5): estimate shows the token cost before the
+      // model call; generate runs the pipeline and writes the pkg@version
+      // cache. The client only offers these for third-party packages (D8).
+      estimate: async ({ repository }) => summaryService.estimate(repository),
+      summarize: async (deps) => summaryService.generate(deps),
+      // Update detection (plan §5.6): force bypasses the 24h daily cache.
+      checkUpdates: async ({ force }) => updatesService.check({ force }),
+      // UpdateRunner generates the command only — never executes (D9: the
+      // user runs it and restarts; the client shows the copyable command).
+      updateCommand: ({ packages }) => {
+        const profileDir = profileDirOf(ctx)
+        if (profileDir === undefined) {
+          return { ok: false, code: 'no-profile', message: '无法定位 profile 目录' }
+        }
+        return {
+          ok: true,
+          command: buildUpdateCommand(packages, profileDir),
+          profileDir,
+          restart: restartCommand(basename(profileDir)),
+        }
       },
     }).map((route) => webServer.register(route))
     return () => {
       for (const dispose of disposers) dispose()
     }
-  }, 'dsh-plugin-catalog: list route')
+  }, 'dsh-plugin-catalog: catalog routes')
 }
 
-/** Services required before the list route can mount (dsh-host-webserver). */
+/** Resolve a cordis service by name (ctx.get), tolerating absence. */
+function getService(ctx: unknown, name: string): unknown {
+  try {
+    return (ctx as { get(name: string): unknown }).get(name)
+  } catch {
+    return undefined
+  }
+}
+
+/** The profile directory the routes update against (ctx.baseUrl, same rule as PluginMetaService). */
+function profileDirOf(ctx: import('@deepseek-ai/cordis').Context): string | undefined {
+  const baseUrl = ctx.baseUrl
+  if (typeof baseUrl !== 'string' || baseUrl === '') return undefined
+  try {
+    return fileURLToPath(new URL(baseUrl))
+  } catch {
+    return undefined
+  }
+}
+
+/** Services required before the routes can mount (dsh-host-webserver). */
 export const inject = ['webServer']

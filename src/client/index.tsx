@@ -40,6 +40,58 @@ export interface PluginCatalogListResponse {
   aliases?: BuiltinAliasEntry[]
 }
 
+/** The `/api/plugin-catalog/updates` payload (one row per package, plan §5.6). */
+export interface UpdateEntryLike {
+  packageName: string
+  sourceKind?: string
+  currentVersion?: string | null
+  latestVersion?: string | null
+  source?: 'npm' | 'github' | 'link' | 'in-box' | null
+  status: 'update-available' | 'up-to-date' | 'local-link' | 'in-box' | 'cannot-check' | 'unknown-version'
+}
+
+/** The `/api/plugin-catalog/updates` response envelope. */
+export interface UpdatesResponse {
+  checkedAt?: string
+  fromCache?: boolean
+  entries: UpdateEntryLike[]
+}
+
+/** One card's update-check / update-action state machine (plan §5.6). */
+export type UpdateUiState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'checked'; entry: UpdateEntryLike | null; checkedAt: string }
+  | { status: 'error'; message: string }
+  | { status: 'command'; command: string; restart: string }
+
+/** One card's AI-summary state machine (plan §5.5). */
+export type SummaryUiState =
+  | { status: 'idle' }
+  | { status: 'estimating' }
+  | { status: 'estimate'; estimatedTokens: number }
+  | { status: 'generating'; estimatedTokens: number }
+  | { status: 'success' }
+  | { status: 'error'; code: string; message: string }
+
+/** POST a JSON body to a catalog route; returns the parsed payload. */
+async function apiPost(path: string, body: unknown): Promise<unknown> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
+/** GET a catalog route; returns the parsed payload. */
+async function apiGet(path: string): Promise<unknown> {
+  const response = await fetch(path)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
 /** Inject face the tab receives from the settings slot. */
 export interface PluginCatalogTabProps {
   list: () => Promise<PluginCatalogListResponse>
@@ -100,6 +152,10 @@ const STYLE_CSS = `
 .dpc-name{font-size:13px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dpc-short{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;flex:none}
 .dpc-version{border:1px solid var(--dsw-alias-border-l2);border-radius:6px;font-size:11px;line-height:16px;padding:0 6px;color:var(--dsw-alias-label-secondary);flex:none;font-variant-numeric:tabular-nums}
+.dpc-update-badge{border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);border-radius:6px;font-size:11px;line-height:16px;padding:0 6px;flex:none;font-variant-numeric:tabular-nums}
+.dpc-update-badge[data-status=cannot-check]{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.dpc-update-badge[data-status=up-to-date]{color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l2);background:transparent}
+.dpc-update-badge[data-status=local-link]{color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l2);background:transparent}
 .dpc-config{font-size:11px;line-height:16px;border-radius:6px;padding:0 6px;flex:none}
 .dpc-config[data-enabled=true]{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent)}
 .dpc-config[data-enabled=false]{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-1)}
@@ -120,6 +176,14 @@ const STYLE_CSS = `
 .dpc-actions{display:flex;gap:8px;flex-wrap:wrap}
 .dpc-actions button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:26px;border-radius:6px;padding:0 10px;cursor:pointer}
 .dpc-actions button:hover{border-color:var(--dsw-alias-border-l1)}
+.dpc-actions button:disabled{opacity:.55;cursor:default}
+.dpc-actions button[data-kind=primary]{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-state-business-primary)}
+.dpc-actions button[data-kind=primary]:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}
+.dpc-command{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);border-radius:8px;padding:8px 10px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-primary);word-break:break-all;display:flex;flex-direction:column;gap:6px}
+.dpc-command code{font:inherit;white-space:pre-wrap}
+.dpc-command button{align-self:flex-start;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:22px;border-radius:6px;padding:0 10px;cursor:pointer}
+.dpc-command p{margin:0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:18px}
+.dpc-hint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:0}
 .dpc-no-result{display:flex;flex-direction:column;gap:10px;padding:4px 2px}
 .dpc-no-result p{margin:0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
 .dpc-suggestions{display:flex;flex-direction:column;gap:6px}
@@ -161,11 +225,24 @@ function PluginCard({
   query,
   open,
   onToggle,
+  updateState,
+  summaryState,
+  thirdParty,
+  onCheckUpdate,
+  onUpdateOne,
+  onGenerateSummary,
 }: {
   entry: CatalogEntryLike
   query: string
   open: boolean
   onToggle: () => void
+  updateState: UpdateUiState
+  summaryState: SummaryUiState
+  /** Only third-party packages get the AI-summary button (plan D8). */
+  thirdParty: boolean
+  onCheckUpdate: () => void
+  onUpdateOne: () => void
+  onGenerateSummary: () => void
 }): JSX.Element {
   const meta = entry.meta ?? {}
   const summary = meta.summary ?? {}
@@ -175,6 +252,22 @@ function PluginCard({
   const phase = entry.fiberPhase ?? 'unobserved'
   const statusLabel = FIBER_PHASE_LABELS[phase] ?? phase
   const detailId = `dpc-details-${encodeURIComponent(entry.entryId)}`
+
+  // Update badge (plan §5.6: ↑latest when an update is available; never a
+  // wrong "最新" — probe failure shows 无法检查 instead).
+  const updateEntry = updateState.status === 'checked' ? updateState.entry : null
+  const updateBadge =
+    updateEntry === null ? null : updateEntry.status === 'update-available' ? (
+      <span className="dpc-update-badge" data-status="update-available" title={`可更新到 ${updateEntry.latestVersion ?? ''}`}>
+        ↑{updateEntry.latestVersion ?? ''}
+      </span>
+    ) : updateEntry.status === 'cannot-check' ? (
+      <span className="dpc-update-badge" data-status="cannot-check" title="更新源不可达，无法检查">无法检查</span>
+    ) : updateEntry.status === 'up-to-date' ? (
+      <span className="dpc-update-badge" data-status="up-to-date" title="已是最新">最新</span>
+    ) : updateEntry.status === 'local-link' ? (
+      <span className="dpc-update-badge" data-status="local-link" title="本地链接安装，不参与更新检测">本地链接</span>
+    ) : null
 
   return (
     <li className="dpc-card" data-plugin-entry={entry.entryId} data-open={open ? 'true' : undefined}>
@@ -191,6 +284,7 @@ function PluginCard({
         </span>
         <span className="dpc-short">{shortName}</span>
         {meta.version != null && <span className="dpc-version">v{meta.version}</span>}
+        {updateBadge}
         <span className="dpc-config" data-enabled={entry.enabled ? 'true' : 'false'}>
           {entry.enabled ? '已启用' : '已停用'}
         </span>
@@ -218,6 +312,8 @@ function PluginCard({
             <div><dt>包名</dt><dd>{entry.moduleName}</dd></div>
             <div><dt>入口</dt><dd>{entry.entryId}</dd></div>
             {meta.version != null && <div><dt>版本</dt><dd>v{meta.version}</dd></div>}
+            {updateEntry !== null && updateEntry.latestVersion != null && <div><dt>最新</dt><dd>v{updateEntry.latestVersion}（{updateEntry.source}）</dd></div>}
+            {updateState.status === 'checked' && updateState.checkedAt !== '' && <div><dt>检查于</dt><dd>{updateState.checkedAt}</dd></div>}
             {meta.sourceKind != null && <div><dt>来源</dt><dd>{meta.sourceKind}</dd></div>}
             <div><dt>配置</dt><dd>{entry.enabled ? '已启用' : '已停用'}</dd></div>
             {entry.enabled && <div><dt>Cordis</dt><dd>{statusLabel}</dd></div>}
@@ -228,6 +324,59 @@ function PluginCard({
               <div><dt>主页</dt><dd><a href={meta.homepage} target="_blank" rel="noreferrer">{meta.homepage} ↗</a></dd></div>
             )}
           </dl>
+
+          <div className="dpc-actions">
+            <button
+              type="button"
+              onClick={onCheckUpdate}
+              disabled={updateState.status === 'checking' || updateState.status === 'command'}
+            >
+              {updateState.status === 'checking' ? '检查中…' : '检查更新'}
+            </button>
+            {updateEntry?.status === 'update-available' && (
+              <button type="button" data-kind="primary" onClick={onUpdateOne} disabled={updateState.status === 'command'}>
+                更新此插件
+              </button>
+            )}
+            {thirdParty && (
+              <button
+                type="button"
+                onClick={onGenerateSummary}
+                disabled={summaryState.status === 'estimating' || summaryState.status === 'generating' || summaryState.status === 'success'}
+              >
+                {summaryState.status === 'generating'
+                  ? '生成中…'
+                  : summaryState.status === 'estimating'
+                    ? '估算中…'
+                    : summaryState.status === 'success'
+                      ? '摘要已生成'
+                      : summaryState.status === 'estimate'
+                        ? `AI 生成中文摘要（约 ${summaryState.estimatedTokens} tokens）`
+                        : 'AI 生成中文摘要'}
+              </button>
+            )}
+          </div>
+
+          {updateState.status === 'checked' && updateEntry?.status === 'update-available' && (
+            <p className="dpc-hint">发现新版本 v{updateEntry.currentVersion ?? ''} → v{updateEntry.latestVersion ?? ''}，点击「更新此插件」获取命令。</p>
+          )}
+          {updateState.status === 'checked' && updateEntry?.status === 'cannot-check' && (
+            <p className="dpc-hint">npm 与 GitHub 均不可达，无法检查更新。</p>
+          )}
+          {updateState.status === 'error' && <p className="dpc-hint">检查失败：{updateState.message}</p>}
+          {updateState.status === 'command' && (
+            <div className="dpc-command">
+              <code>{updateState.command}</code>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(updateState.command).catch(() => undefined)}>复制更新命令</button>
+              <p>更新完成后请重启 DSH 生效：<code>{updateState.restart}</code>（只提示，不自动重启）</p>
+            </div>
+          )}
+
+          {summaryState.status === 'estimate' && (
+            <p className="dpc-hint">预计消耗约 {summaryState.estimatedTokens} tokens（README 截断后输入），再次点击生成。</p>
+          )}
+          {summaryState.status === 'error' && <p className="dpc-hint">摘要生成失败：{summaryState.message}</p>}
+          {summaryState.status === 'success' && <p className="dpc-hint">AI 摘要已生成并缓存（pkg@版本），列表立即生效。</p>}
         </div>
       )}
     </li>
@@ -246,6 +395,10 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
   const [debounced, setDebounced] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [layout, setLayout] = useState<Layout>(readLayout)
+  // Task 4: update checks + AI summary state machines, keyed by entryId.
+  const [updates, setUpdates] = useState<Record<string, UpdateUiState>>({})
+  const [summaries, setSummaries] = useState<Record<string, SummaryUiState>>({})
+  const [bulkState, setBulkState] = useState<{ status: 'idle' | 'checking' | 'done'; count: number }>({ status: 'idle', count: 0 })
 
   // Debounce the query (plan §5.3: 防抖 + useMemo).
   useEffect(() => {
@@ -271,6 +424,34 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
       current = false
     }
   }, [list, request])
+
+  // Daily auto-check on open (plan D3): the host decides from its 24h cache —
+  // force=false. Manual refresh (toolbar button) passes force=true.
+  const runCheckUpdates = useMemo(() => (force: boolean) => {
+    setBulkState({ status: 'checking', count: 0 })
+    apiGet(`/api/plugin-catalog/updates${force ? '?force=1' : ''}`)
+      .then(
+        (body) => {
+          const payload = body as { entries?: UpdateEntryLike[]; checkedAt?: string }
+          const rows = payload.entries ?? []
+          const next: Record<string, UpdateUiState> = {}
+          for (const row of rows) next[row.packageName] = { status: 'checked', entry: row, checkedAt: payload.checkedAt ?? '' }
+          setUpdates(next)
+          setBulkState({ status: 'done', count: rows.filter((row) => row.status === 'update-available').length })
+        },
+        (error: unknown) => {
+          setBulkState({ status: 'done', count: 0 })
+          const message = error instanceof Error ? error.message : String(error)
+          setBulkState({ status: 'idle', count: 0 })
+          console.warn('plugin-catalog update check failed:', message)
+        },
+      )
+  }, [])
+
+  // Initial (cache-first) check once the list is ready.
+  useEffect(() => {
+    if (state.status === 'ready') runCheckUpdates(false)
+  }, [state.status, runCheckUpdates])
 
   const results = useMemo(
     () => (state.status === 'ready' ? searchPlugins(state.entries, debounced, state.aliases) : []),
@@ -298,6 +479,98 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
     persistLayout(next)
   }
 
+  /** One card: re-check (force) and read back that package's row. */
+  const checkOne = (moduleName: string): void => {
+    setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'checking' } }))
+    apiGet('/api/plugin-catalog/updates?force=1').then(
+      (body) => {
+        const payload = body as { entries?: UpdateEntryLike[]; checkedAt?: string }
+        const row = (payload.entries ?? []).find((entry) => entry.packageName === moduleName) ?? null
+        setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'checked', entry: row, checkedAt: payload.checkedAt ?? '' } }))
+      },
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'error', message } }))
+      },
+    )
+  }
+
+  /** One card: ask the host for the update command (UpdateRunner never executes). */
+  const updateOne = (moduleName: string): void => {
+    apiPost('/api/plugin-catalog/update', { packages: [moduleName] }).then(
+      (body) => {
+        const payload = body as { ok?: boolean; command?: string; restart?: string; code?: string; message?: string }
+        if (payload.ok !== true || payload.command === undefined) {
+          setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'error', message: payload.message ?? `未实现（${payload.code ?? 'unknown'}）` } }))
+          return
+        }
+        // Local const capture: property-access narrowing (payload.command)
+        // does not survive into the setState closure, so read once here.
+        const command: string = payload.command
+        const restart: string = payload.restart ?? ''
+        setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'command', command, restart } }))
+      },
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        setUpdates((current): Record<string, UpdateUiState> => ({ ...current, [moduleName]: { status: 'error', message } }))
+      },
+    )
+  }
+
+  /** One card: AI summary — estimate the token cost first, then generate on the second tap. */
+  const generateSummary = (entry: CatalogEntryLike): void => {
+    const current = summaries[entry.entryId] ?? { status: 'idle' }
+    if (current.status === 'estimate' || current.status === 'generating') return
+    const meta = entry.meta ?? {}
+    const repository = meta.repository ?? null
+    const run = (): void => {
+      setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'generating', estimatedTokens: 0 } }))
+      apiPost('/api/plugin-catalog/summary', {
+        packageName: entry.moduleName,
+        repository,
+        version: meta.version ?? null,
+      }).then(
+        (body) => {
+          const payload = body as { ok?: boolean; code?: string; message?: string }
+          if (payload.ok !== true) {
+            setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'error', code: payload.code ?? 'unknown', message: payload.message ?? '生成失败' } }))
+            return
+          }
+          setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'success' } }))
+          // Refresh the list so the cached summary renders immediately.
+          setRequest((value) => value + 1)
+        },
+        (error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'error', code: 'network', message } }))
+        },
+      )
+    }
+    if (current.status === 'idle') {
+      setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'estimating' } }))
+      apiPost('/api/plugin-catalog/summary/estimate', { repository }).then(
+        (body) => {
+          const payload = body as { estimatedTokens?: number; ok?: false; code?: string; message?: string }
+          if (typeof payload.estimatedTokens === 'number') {
+            // Local const capture: type-guard narrowing of the property does
+            // not survive into the setState closure.
+            const estimatedTokens: number = payload.estimatedTokens
+            setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'estimate', estimatedTokens } }))
+          } else {
+            const message = payload.message ?? '无法估算成本（可能没有仓库地址）'
+            setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'error', code: payload.code ?? 'estimate-failed', message } }))
+          }
+        },
+        (error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          setSummaries((all): Record<string, SummaryUiState> => ({ ...all, [entry.entryId]: { status: 'error', code: 'network', message } }))
+        },
+      )
+      return
+    }
+    run()
+  }
+
   return (
     <section className="dpc-section" aria-busy={state.status === 'loading'}>
       {state.status === 'loading' && <p className="dpc-status">正在读取插件…</p>}
@@ -320,6 +593,17 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
                 onChange={(event) => setQuery(event.currentTarget.value)}
               />
             </label>
+            <button
+              type="button"
+              className="dpc-layout-toggle"
+              onClick={() => runCheckUpdates(true)}
+              disabled={bulkState.status === 'checking'}
+            >
+              {bulkState.status === 'checking' ? '检查中…' : '检查全部更新'}
+            </button>
+            {bulkState.status === 'done' && bulkState.count > 0 && (
+              <span className="dpc-count" data-update-count={bulkState.count}>{bulkState.count} 个可更新</span>
+            )}
             <button type="button" className="dpc-layout-toggle" onClick={toggleLayout}>
               {layout === 'single' ? '双列紧凑' : '单列'}
             </button>
@@ -350,15 +634,27 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
 
           {results.length > 0 && (
             <ul className={`dpc-cards${layout === 'dual' ? ' dpc-dual' : ''}`}>
-              {results.map((hit) => (
-                <PluginCard
-                  key={hit.entry.entryId}
-                  entry={hit.entry}
-                  query={debounced}
-                  open={expanded === hit.entry.entryId}
-                  onToggle={() => setExpanded((current) => (current === hit.entry.entryId ? null : hit.entry.entryId))}
-                />
-              ))}
+              {results.map((hit) => {
+                const entry = hit.entry
+                const sourceKind = entry.meta?.sourceKind
+                // Only third-party packages get the AI-summary button (D8).
+                const thirdParty = sourceKind === 'registry' || sourceKind === 'github'
+                return (
+                  <PluginCard
+                    key={entry.entryId}
+                    entry={entry}
+                    query={debounced}
+                    open={expanded === entry.entryId}
+                    onToggle={() => setExpanded((current) => (current === entry.entryId ? null : entry.entryId))}
+                    updateState={updates[entry.moduleName] ?? { status: 'idle' }}
+                    summaryState={summaries[entry.entryId] ?? { status: 'idle' }}
+                    thirdParty={thirdParty}
+                    onCheckUpdate={() => checkOne(entry.moduleName)}
+                    onUpdateOne={() => updateOne(entry.moduleName)}
+                    onGenerateSummary={() => generateSummary(entry)}
+                  />
+                )
+              })}
             </ul>
           )}
         </>

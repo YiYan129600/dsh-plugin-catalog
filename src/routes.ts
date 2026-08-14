@@ -1,6 +1,6 @@
 /**
  * dsh-plugin-catalog — host HTTP surface (plan §5.1 transport for the list
- * page; Task 4 adds summary / update routes next to this file).
+ * page; Task 4 adds the summary / update routes below).
  *
  * The client half is a browser classic script that cannot import the Typert
  * generated client contribution (no generator step in this repo), so the
@@ -26,6 +26,10 @@ export interface ApiRequestLike {
     cookie?: string
   }
   socket?: { remoteAddress?: string }
+  /** Parsed JSON body (the host webServer provides it for POST routes). */
+  body?: unknown
+  /** Raw body string (fallback when the host passes an unparsed body). */
+  rawBody?: string
 }
 
 /** Structural view of node:http ServerResponse the routes write to. */
@@ -37,7 +41,51 @@ export interface ApiResponseLike {
 /** Route paths (exact matches under /api). */
 export const CATALOG_PATHS = {
   list: '/api/plugin-catalog/list',
+  summary: '/api/plugin-catalog/summary',
+  summaryEstimate: '/api/plugin-catalog/summary/estimate',
+  updates: '/api/plugin-catalog/updates',
+  update: '/api/plugin-catalog/update',
 } as const
+
+/** Route family dependencies (fence + the data seams). */
+export interface CatalogRouteDeps {
+  /** Loopback trust fence; the handler 403s when it declines. */
+  fence(request: ApiRequestLike): boolean
+  /** Produce the plugin list projection (the host service's `list()`). */
+  list(): { entries: unknown[] } | Promise<{ entries: unknown[] }>
+  /** AI summary generation (plan §5.5) — optional; 501 when absent. */
+  summarize?(deps: { packageName: string; repository: string | null; version: string | null }): Promise<unknown>
+  /** Pre-trigger cost estimate (plan §5.5) — optional; 501 when absent. */
+  estimate?(deps: { repository: string | null }): Promise<unknown>
+  /** Update check (plan §5.6), `force` bypasses the 24h cache — optional. */
+  checkUpdates?(deps: { force: boolean }): Promise<unknown>
+  /** UpdateRunner command generation (never executes) — optional. */
+  updateCommand?(deps: { packages: string[] }): unknown
+}
+
+/** Decode the request body: parsed object first, raw JSON string fallback. */
+function bodyOf(request: ApiRequestLike): Record<string, unknown> {
+  if (typeof request.body === 'object' && request.body !== null) return request.body as Record<string, unknown>
+  if (typeof request.rawBody === 'string' && request.rawBody !== '') {
+    try {
+      const parsed = JSON.parse(request.rawBody)
+      return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
+/** Read the `force=1` query flag off the request URL. */
+function forceFlagOf(request: ApiRequestLike): boolean {
+  try {
+    const url = new URL(request.url ?? '', 'http://x')
+    return url.searchParams.get('force') === '1'
+  } catch {
+    return false
+  }
+}
 
 /** One JSON response. */
 export function writeJson(res: ApiResponseLike, status: number, body: unknown): void {
@@ -118,36 +166,92 @@ export function isTrustedApiRequest(request: ApiRequestLike, trustedHosts: reado
   }
 }
 
-/** Route family dependencies (fence + the data seam). */
-export interface CatalogRouteDeps {
-  /** Loopback trust fence; the handler 403s when it declines. */
-  fence(request: ApiRequestLike): boolean
-  /** Produce the plugin list projection (the host service's `list()`). */
-  list(): { entries: unknown[] } | Promise<{ entries: unknown[] }>
-}
-
 /** The exact routes to register on `ctx.webServer`. */
 export function makeCatalogRoutes(deps: CatalogRouteDeps): Array<{
   kind: 'exact'
   path: string
   handler: (request: ApiRequestLike, response: ApiResponseLike) => void | Promise<void>
 }> {
-  const handleList = async (request: ApiRequestLike, response: ApiResponseLike): Promise<void> => {
-    if (request.method !== 'GET') {
-      response.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
-      response.end('method not allowed')
-      return
-    }
-    if (!deps.fence(request)) {
-      writeJson(response, 403, { ok: false, code: 'forbidden' })
-      return
-    }
-    try {
-      writeJson(response, 200, await deps.list())
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      writeJson(response, 500, { ok: false, code: 'internal', message })
-    }
-  }
-  return [{ kind: 'exact', path: CATALOG_PATHS.list, handler: handleList }]
+  /** Shared GET plumbing: method check → fence → handler (request visible to `run`). */
+  const getRoute = (path: string, run: (request: ApiRequestLike) => unknown | Promise<unknown>): {
+    kind: 'exact'
+    path: string
+    handler: (request: ApiRequestLike, response: ApiResponseLike) => Promise<void>
+  } => ({
+    kind: 'exact',
+    path,
+    handler: async (request, response) => {
+      if (request.method !== 'GET') {
+        response.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
+        response.end('method not allowed')
+        return
+      }
+      if (!deps.fence(request)) {
+        writeJson(response, 403, { ok: false, code: 'forbidden' })
+        return
+      }
+      try {
+        writeJson(response, 200, await run(request))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        writeJson(response, 500, { ok: false, code: 'internal', message })
+      }
+    },
+  })
+
+  /** Shared POST plumbing: method check → fence → body parse → handler. */
+  const postRoute = (path: string, run: (body: Record<string, unknown>) => unknown | Promise<unknown>): {
+    kind: 'exact'
+    path: string
+    handler: (request: ApiRequestLike, response: ApiResponseLike) => Promise<void>
+  } => ({
+    kind: 'exact',
+    path,
+    handler: async (request, response) => {
+      if (request.method !== 'POST') {
+        response.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
+        response.end('method not allowed')
+        return
+      }
+      if (!deps.fence(request)) {
+        writeJson(response, 403, { ok: false, code: 'forbidden' })
+        return
+      }
+      try {
+        writeJson(response, 200, await run(bodyOf(request)))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        writeJson(response, 500, { ok: false, code: 'internal', message })
+      }
+    },
+  })
+
+  /** A missing data seam degrades to 501 (the client feature-detects and hides the UI). */
+  const notImplemented = (): { ok: false; code: 'not-implemented' } => ({ ok: false, code: 'not-implemented' })
+
+  return [
+    getRoute(CATALOG_PATHS.list, () => deps.list()),
+    getRoute(CATALOG_PATHS.updates, (request) => (
+      deps.checkUpdates === undefined ? notImplemented() : deps.checkUpdates({ force: forceFlagOf(request) })
+    )),
+    postRoute(CATALOG_PATHS.summaryEstimate, (body) => (
+      deps.estimate === undefined
+        ? notImplemented()
+        : deps.estimate({ repository: typeof body.repository === 'string' ? body.repository : null })
+    )),
+    postRoute(CATALOG_PATHS.summary, (body) => (
+      deps.summarize === undefined
+        ? notImplemented()
+        : deps.summarize({
+            packageName: typeof body.packageName === 'string' ? body.packageName : '',
+            repository: typeof body.repository === 'string' ? body.repository : null,
+            version: typeof body.version === 'string' ? body.version : null,
+          })
+    )),
+    postRoute(CATALOG_PATHS.update, (body) => (
+      deps.updateCommand === undefined
+        ? notImplemented()
+        : deps.updateCommand({ packages: Array.isArray(body.packages) ? body.packages.filter((value): value is string => typeof value === 'string') : [] })
+    )),
+  ]
 }

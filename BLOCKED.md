@@ -55,3 +55,18 @@
 ### 其余
 
 - 无。
+
+## 任务 4（2026-02-23）— 无新增阻塞，验收全绿
+
+### 环境事实
+
+- 无新沙箱拒绝发生（本轮未触碰 ~/.dsh 与 dsh web，也未触发任何提权弹窗）。任务 5 的 git push 沿用任务 1 已记录方案：`git -c http.sslBackend=openssl push` + token 一次性 URL，推完还原 remote。
+- 半成品排障记录（非阻塞，供后续参考）：任务 4 半成品曾有 15 红，根因是 `parseGitHubRepo`/`parseGitHubRepository` 的解构少滤一层（`[, owner, repo]` 跳过了 owner）、`truncateReadme` 多一个换行符、3 个 update 用例的 mock 数据与 semver 自相矛盾（0.2.0 vs 0.11.0 不可能判 update-available）——均已修，详见 PROGRESS.md 任务 4 决策记录。
+
+### 新运行依赖（任务书要求记录）
+
+- 无新增运行/开发依赖（tsdown/vitest/react/jsdom 均已在豁免清单）。
+
+### 其余
+
+- 无。

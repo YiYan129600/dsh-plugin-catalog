@@ -72,4 +72,26 @@
 
 - 任务 4：SummaryService（README 抓取 + 用户模型提炼 + 缓存）+ UpdateCheckService（npm 优先/GitHub 回退/link 不查/每日 1 次）+ UpdateRunner（只生成命令）；客户端版本/更新徽标与按钮状态机；宿主继续往 `src/routes.ts` 挂 `/api/plugin-catalog/...` 路由。
 
+## 任务 4 完成（2026-02-23 本轮）
+
+### 交付
+
+- 宿主 `src/summary.ts`（SummaryService，规划 §5.5）+ `src/update.ts`（UpdateCheckService + UpdateRunner，规划 §5.6）补完；`src/index.ts` 宿主接线：`apply` 内建 SummaryService/UpdateCheckService（metaProvider 读实时 loader 的 PluginMetaService.list()），`/api/plugin-catalog/{list,updates,summary,summary/estimate,update}` 五路由全部挂上（loopback fence 沿用）；`src/routes.ts` 补 summary/updates/update 路由（GET updates 带 `force=1` 查询、POST summary/estimate/summary/update，缺数据缝降级 501），删除残留的重复 `CatalogRouteDeps` 接口声明。
+- 客户端 `src/client/index.tsx`：更新徽标（↑新版本 / 最新 / 无法检查 / 本地链接，绝不误报「最新」）+ 每卡「检查更新 / 更新此插件」按钮与 `UpdateUiState` 状态机（idle→checking→checked/error→command，command 态显示可复制 `pnpm update` 命令 + 重启提示，D9 只提示不执行）+ 工具栏「检查全部更新」（force）+ AI 摘要按钮（仅第三方 registry/github，D8）与 `SummaryUiState` 状态机（idle→estimating→estimate(tokens 预估)→generating→success/error，成功刷新列表立即显示缓存摘要）。
+- 测试：`tests/summary.test.mjs`（24 用例：README 抓取顺序/base64 回退/仓库解析/截断+token 预估/严格 JSON 校验/生成管线+缓存 key=pkg@version/Service 降级与 e2e）、`tests/update.test.mjs`（24 用例：prerelease 版本比较/link 不查/npm 优先/GitHub releases+tags 回退/全败=「无法检查」且注入 fetch 抛错同判/探针 TTL/24h 缓存+force/UpdateRunner 命令生成/statusFromLatest）、`tests/routes.test.mjs` 扩到 5 路由断言。
+- 验收全绿：`pnpm test` **90/90、skip 0**（7 文件，任务 3 基线 42 + summary 24 + update 24）；`pnpm build` 产物 lib/index.js + lib/client.js 存在；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错（14 文件、119.8 kB）。
+- 反向验证（红→绿证据见会话记录）：把 `checkOnePackage` 全败分支临时改为 `status: 'up-to-date'`（被规划禁止的误报）→ 「全败=无法检查」「注入 fetch 抛错」2 用例红（88/90）；还原 → 90/90 全绿。
+
+### 决策记录（为什么这么走）
+
+- **半成品三个实现 bug（读懂后修复，未推倒重来）**：(1) `parseGitHubRepo`/`parseGitHubRepository` 的 `const [, owner, repo] = pathname.split('/').filter(Boolean)` 少看了一层——filter 已去掉前导空串，前导逗号把 owner 跳成了 repo 名（实测所有仓库解析返回 null，8 个 summary 用例 + 5 个 update 用例全挂）；改为 `const [owner, repo]`。(2) `truncateReadme` 多了一个 `\n`（6006 > 测试钉死的 6005 上界），去掉换行符。(3) 客户端两处 TS2322：属性访问收窄（payload.command / payload.estimatedTokens）不进入 setState 闭包，先捕获到局部 const 再闭包使用。
+- **半成品测试数据自相矛盾（按正确行为修正数据，未放宽任何断言、未删任何用例）**：update.test.mjs 里 3 处 mock「npm latest 0.2.0 vs current 0.11.0」却断言 `update-available`——按 semver（并对照 @linxin666/dsh-remote-web-ui/lib/types/update.js 参照）0.2.0 < 0.11.0 只能判「最新」，该数据永远无法转绿；把 mock latest 改为 0.12.0（与 fixture 的 dsh-ssh 0.11.0 自洽），断言原样保留。
+- **`readmeCandidateUrls` 探针顺序微调**：HEAD/readme.md（小写变体）从第二位挪到 main/master 之后——测试（未动）钉死「HEAD 404 → 第二位是 main」，README.md 大写是压倒性惯例、小写变体保底仍在（正确性不变），避免为迁就实现去改验收测试。
+- **SummaryService 用 DSH 宿主进程环境变量取模型配置**（`envApiConfigProvider`：DSH_API_* 覆盖 DEEPSEEK_*，无 key 返回 null → UI 提示「去设置配模型」），D7 复用已配模型、不新增配置面；缓存写 `~/.dsh/cache/plugin-summaries.json`（可注入路径，key=pkg@version，temp+rename 原子写）。UpdateCheckService 缓存 `plugin-updates.json`（lastCheckAt + entries + 按源的 probes TTL npm 1h/GitHub 24h），非 force 且 <24h 直接回缓存，force 重探但 TTL 内复用新鲜探针结果。
+- 测试数：90 ≥ 基线 42+16+11；skip 0；未碰判卷标准与 fixture。
+
+### 下一任务
+
+- 任务 5：全量 pnpm test+build+typecheck；README（安装=领导一条命令 + 重启生效）；PROGRESS.md 终态；BLOCKED.md 汇总；git 提交（含任务 4 全部改动）并推送 GitHub（按 BLOCKED.md 已记录的 openssl + token 一次性 URL 方案）。
+
 （历史：任务 0 回执见上。）
