@@ -1,5 +1,30 @@
 # dsh-plugin-catalog — PROGRESS
 
+## 任务 3 完成（v0.2.0 轮，2026-02-23）— 收尾：版本 0.2.0 + README + 全量验收 + 推送 + tag，验收全绿
+
+### 交付
+
+- `package.json` version `0.1.0` → **`0.2.0`**（其余 0.1.0 引用均为依赖版本/测试数据，未动）。
+- README.md 重写功能说明：新增「汉化开关」「翻译授权」「内置中文表」「分类 chips」「导出 dsh.plugin 片段」条目，模糊搜索描述补四级匹配（别名→分词→拼音→子序列）与 458 字音节表；验收基线数字更新为 123/123、19 文件、213.0 kB；任务进度按 v0.2.0 轮 1/2/3 编号。
+- 全量验收重跑（v0.2.0 下，命令输出见会话记录）：
+  - `pnpm test` → **123/123、skip 0**（9 文件：contract 3 / routes 11 / client-bundle 2 / search 16 / meta 10 / task2 17 / update 24 / summary 24 / localize 16）。
+  - `pnpm build` → 产物 `lib/index.js`（103.87 kB）+ `lib/client.js`（99.15 kB）存在，exit 0。
+  - `pnpm typecheck` → 0 错误（exit 0）。
+  - `npm pack --dry-run`（`--cache` 白名单内）→ 无错：`dsh-plugin-catalog-0.2.0.tgz`、19 文件、213.0 kB、exit 0。
+- 任务 3 反向验证（红→绿，证据见会话记录）：向 `src/client/index.tsx` 末尾注入语法错误 `this is not javascript(!!`（改前 `Copy-Item` 留字节副本，改后 SHA256 核对还原）→ `pnpm build` **红**（rolldown `Command failed with exit code 1`，ELIFECYCLE）；还原 → build exit 0、`pnpm test` 123/123 全绿。
+- git：提交 `task 3 (v0.2.0): closeout`（package.json 版本 + README + PROGRESS/BLOCKED 终态），按 BLOCKED.md 方案推送（`git -c http.sslBackend=openssl push` + token 一次性 URL，推完还原干净 URL），**tag v0.2.0 已打并推送**；推完远端 `main` = 本地 HEAD，工作树干净，remote URL 无 token。
+
+### 决策记录（为什么这么走）
+
+- **反向验证注入生成源而非产物**：任务 5 已实测向 `lib/client.js` 追加语法错误会被 `clean: true` 重建覆盖、无法产生红；本次直接注入其生成源 `src/client/index.tsx`，一次即红。
+- **版本号只改 package.json 一处**：grep 全仓 0.1.0 引用，其余全部为 `@deepseek-ai/*` 依赖版本或测试 mock 数据（update.test.mjs 的 semver 用例），与包版本无关。
+- **README 基线数字用重跑实测值**（123/123、19 文件、213.0 kB），与 PROGRESS/BLOCKED 一致；任务进度沿用仓库既有「任务 1–5 + v0.2.0 轮 1/2/3」编号，避免歧义。
+
+### 终态核对（硬指标）
+
+- 硬指标 1：`pnpm test` 123/123 全绿 skip 0；build 产物 `lib/index.js` + `lib/client.js` 存在；GitHub 远端 `main` = 本地 HEAD、tag `v0.2.0` 存在、仓库公开（`gh repo view --json visibility` = PUBLIC）。
+- 硬指标 2：本轮改动仅仓库内 `package.json` / `README.md` / `PROGRESS.md` / `BLOCKED.md`（白名单内）；未重启 dsh web；未写 ~/.dsh；零新增运行/开发依赖。
+
 ## 任务 2 完成（v0.2.0 轮，2026-02-23）— 拼音搜索 + 分类 chips + 导出 dsh.plugin 片段 + 公约文档与无依赖校验器，验收全绿
 
 ### 交付

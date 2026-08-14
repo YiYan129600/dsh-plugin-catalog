@@ -1,5 +1,22 @@
 # BLOCKED — dsh-plugin-catalog
 
+## 任务 3（v0.2.0 轮，2026-02-23）— 收尾，无新增阻塞，验收全绿
+
+### 环境事实
+
+- 无新沙箱拒绝发生：本轮未触碰 ~/.dsh、未重启 dsh web、未触发提权弹窗。git push 沿用任务 1 已记录方案成功：`git -c http.sslBackend=openssl push https://x-access-token:<token>@github.com/YiYan129600/dsh-plugin-catalog.git main:main`，推完立即 `git remote set-url origin https://github.com/YiYan129600/dsh-plugin-catalog.git` 还原干净 URL；未用 `git fetch`。
+- 分支跟踪提示「upstream is gone」（历史 set-url 残留，非本轮引入）；推送用显式 `main:main`，推完 `git rev-parse` 核对远端一致，未修跟踪以免节外生枝。
+- 反向验证（红→绿，证据见 PROGRESS.md 任务 3 节）：注入语法错误到 `src/client/index.tsx`（生成源，非产物 lib/client.js——任务 5 已实测产物会被 `clean: true` 重建覆盖无法红）→ `pnpm build` rolldown exit 1 红；`Copy-Item` 副本还原（SHA256 一致）→ build exit 0、test 123/123 全绿。
+- 全量验收数字（v0.2.0）：`pnpm test` 123/123、skip 0；`pnpm build` 产物 lib/index.js + lib/client.js；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错（19 文件、213.0 kB）。
+
+### 新运行依赖（任务书要求记录）
+
+- 无新增运行/开发依赖（本轮仅 package.json 版本号 0.1.0→0.2.0，无依赖变更）。
+
+### 其余
+
+- 无。
+
 ## 任务 2（v0.2.0 轮，2026-02-23）— 无新增阻塞，验收全绿
 
 ### 环境事实
