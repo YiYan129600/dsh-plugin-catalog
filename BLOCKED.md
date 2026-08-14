@@ -70,3 +70,18 @@
 ### 其余
 
 - 无。
+
+## 任务 5（2026-02-23）— 收尾，无新增阻塞，验收全绿
+
+### 环境事实
+
+- 无新沙箱拒绝发生：本轮未触碰 ~/.dsh、未重启 dsh web、未触发提权弹窗。git push 沿用任务 1 已记录方案成功：`git -c http.sslBackend=openssl push https://x-access-token:<token>@github.com/YiYan129600/dsh-plugin-catalog.git main:main`，推完立即 `git remote set-url origin https://github.com/YiYan129600/dsh-plugin-catalog.git` 还原干净 URL；未用 `git fetch`。
+- 全量验收数字：`pnpm test` 90/90、skip 0；`pnpm build` 产物 lib/index.js + lib/client.js；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错（14 文件、119.8 kB）。反向验证均红→绿还原，证据见 PROGRESS.md 任务 5 节：更新全败误报 → update 2 用例红；客户端语法错误（任务书字面改坏 lib/client.js 因 `clean: true` 重建覆盖无法产生红，实测留证后改注入生成源 src/client/index.tsx）→ build `[PARSE_ERROR]` 红。
+
+### 新运行依赖（任务书要求记录）
+
+- 无新增运行/开发依赖。
+
+### 其余
+
+- 无。

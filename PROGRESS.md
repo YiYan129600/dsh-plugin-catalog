@@ -94,4 +94,26 @@
 
 - 任务 5：全量 pnpm test+build+typecheck；README（安装=领导一条命令 + 重启生效）；PROGRESS.md 终态；BLOCKED.md 汇总；git 提交（含任务 4 全部改动）并推送 GitHub（按 BLOCKED.md 已记录的 openssl + token 一次性 URL 方案）。
 
+## 任务 5 完成（2026-02-23 本轮）— 收尾，全部验收绿
+
+### 交付
+
+- 任务 4 收尾核对：上一轮已完成并提交（`b87d77a`），本轮重跑四项验收命令全部绿（见下），无未提交改动。
+- 全量验收（命令输出见会话记录）：
+  - `pnpm test` → **90/90、skip 0**（7 文件：contract 3 / routes 11 / client-bundle 2 / search 16 / summary 24 / meta 10 / update 24）。
+  - `pnpm build` → 产物 `lib/index.js`（73.1 kB）+ `lib/client.js`（47.9 kB）存在。
+  - `pnpm typecheck` → 0 错误（exit 0）。
+  - `npm pack --dry-run`（`--cache` 白名单内）→ 无错：14 文件、119.8 kB、exit 0。
+- 任务 4 反向验证（红→绿，本轮重做）：把 `checkOnePackage` 全败分支临时改为 `status: 'up-to-date'`（规划禁止的误报）→ `tests/update.test.mjs` 2 用例红（88/90：「ALL probes failing = cannot-check, NEVER a wrong up-to-date」「injected fetch that THROWS also lands on cannot-check」）；还原 → 90/90 全绿。
+- 任务 5 反向验证（红→绿）：先按任务书字面往 `lib/client.js` 末尾追加 `this is not javascript(!!` → `pnpm build` **仍绿**（exit 0，tsdown 第一段 `clean: true` 先清空 lib/ 再从 src 重建，产物被覆盖，字面操作无法产生红，实测留证）；改把同一语法错误注入其生成源 `src/client/index.tsx` → `pnpm build` **红**（`[PARSE_ERROR] Unexpected token`，exit 1，lib/client.js 未产出）；`git checkout` 还原 → 绿（build exit 0，产物 73.1/47.9 kB，`pnpm test` 90/90）。注：注入/还原全程用 git 与二进制字节校验，未污染源码编码。
+- README.md 终态：安装=领导一条命令 `dsh plugin --profile web add link:D:/work/dsh-plugin-catalog` + 重启 dsh web 生效；功能说明（中文名/模糊搜索/每日更新检测/一键更新/跳 GitHub/双列布局/AI 摘要仅第三方）；开发命令；任务进度全 5 项。
+- git：提交 `task 5: closeout`（README/PROGRESS/BLOCKED 终态；任务 4 改动已在 `b87d77a` 包含），按 BLOCKED.md 方案推送（`git -c http.sslBackend=openssl push` + token 一次性 URL），推完 remote 还原干净 URL（`https://github.com/YiYan129600/dsh-plugin-catalog.git`）。远端 `main` = 本地 HEAD，工作树干净。
+- 硬指标核对：白名单外 0 改动（本轮只动仓库内 README/PROGRESS/BLOCKED）；未重启 dsh web；未写 ~/.dsh；验收命令与测试文件未放宽、未删除。
+
+### 决策记录（为什么这么走）
+
+- **README 一次写到位**：任务书要求「安装=领导一条命令 + 重启生效 + 功能说明」，原 README 只有骨架和过时进度，直接重写终态版（保留安装命令原样）。
+- **git 提交单条收尾**：任务 4 已提交于 `b87d77a`，任务 5 提交只含文档终态，推送后远端即含全部源码 + PROGRESS.md + BLOCKED.md。
+- **推送沿用任务 1 已记录方案**（BLOCKED.md 任务 1 节）：`git -c http.sslBackend=openssl push https://x-access-token:<token>@github.com/...`（schannel 报 SEC_E_NO_CREDENTIALS、credential helper 经 msys sh 管道被拒）；推完立即 `git remote set-url` 还原干净 URL；全程未用 `git fetch`。
+
 （历史：任务 0 回执见上。）
