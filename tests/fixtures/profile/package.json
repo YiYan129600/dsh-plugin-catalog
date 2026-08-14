@@ -1,0 +1,21 @@
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "@linxin666/dsh-task-board": "0.1.12",
+    "dsh-ssh": "^0.11.0",
+    "dsh-openpencil": "link:../dsh-openpencil",
+    "whale-girl": "github:vlln/whale-girl#main"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@linxin666/dsh-task-board",
+        "dsh-ssh",
+        "dsh-openpencil",
+        "whale-girl"
+      ]
+    }
+  }
+}

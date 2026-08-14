@@ -1,0 +1,8 @@
+{
+  "dsh-ssh@0.11.0": {
+    "nameZh": "SSH 远程运维",
+    "descZh": "远程执行命令、传输文件、端口转发与集群并发运维",
+    "source": "builtin",
+    "generatedAt": "2026-02-23T00:00:00.000Z"
+  }
+}

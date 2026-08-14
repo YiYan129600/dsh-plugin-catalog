@@ -27,10 +27,12 @@
     }
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-app-boot": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
     "react": "^18.2.0"
   },
   "devDependencies": {
@@ -40,6 +42,8 @@
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
+    "@types/node": "^24.13.3",
     "@types/react": "~18.3.1",
     "@types/react-dom": "^18.3.5",
     "jsdom": "^25.0.0",
@@ -61,11 +65,11 @@
     "url": "git+https://github.com/YiYan129600/dsh-plugin-catalog.git"
   },
   "scripts": {
-    "build": "tsdown && node scripts/fix-client-bundle.mjs",
-    "bundle": "tsdown && node scripts/fix-client-bundle.mjs",
+    "build": "tsdown && node scripts/fix-client-bundle.mjs && node scripts/lower-decorators.mjs",
+    "bundle": "tsdown && node scripts/fix-client-bundle.mjs && node scripts/lower-decorators.mjs",
     "watch": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "tsdown && node scripts/fix-client-bundle.mjs && node --import ./scripts/patch-exec-for-vitest.mjs node_modules/vitest/vitest.mjs run --configLoader native",
+    "test": "tsdown && node scripts/fix-client-bundle.mjs && node scripts/lower-decorators.mjs && node --import ./scripts/patch-exec-for-vitest.mjs node_modules/vitest/vitest.mjs run --configLoader native",
     "test:watch": "node --import ./scripts/patch-exec-for-vitest.mjs node_modules/vitest/vitest.mjs --configLoader native"
   }
 }

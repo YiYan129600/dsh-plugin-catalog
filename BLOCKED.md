@@ -24,6 +24,18 @@
 
 - 无新增运行依赖；全部工具链在豁免清单内（tsdown/vitest/react/jsdom）。`@deepseek-ai/*@0.1.0-rc.6` 为 devDependencies（与运行中 dsh 版本一致；npm latest tag 是 0.0.1-rc.1，须显式 `^0.1.0-rc.6` 才能解析到 next tag 的 rc.6）。
 
+## 任务 2（2026-02-23）— 全部有规避方案，验收已全绿
+
+### 环境事实（沙箱硬边界，勿再试）
+
+1. **esbuild 依旧不可用**（同任务 1）：本任务需要的「标准装饰器转译」官方用 esbuild 做（`__esDecorate` helper），沙箱拒绝任何 esbuild 调用。**规避（已落地）**：`scripts/lower-decorators.mjs` 用已装依赖 `typescript` 的 `transpileModule` 在进程内做等价 stage-3 装饰器降级（postbuild 改写 lib/index.js；产物与 esbuild 的 `__esDecorate` 形状一致，实测 node 可正常 import）。
+2. **tsdown 0.22 的 rolldown/oxc 不转译标准（ecma/stage-3）装饰器**（oxc-project/oxc#9170 open）：`@Remote('list')` 会原样留在产物里 → Node `SyntaxError: Invalid or unexpected token`。且 tsdown 的 `external` 选项已废弃（静默忽略），必须用 `deps.neverBundle`；未设 `target` 时 tsdown 完全不做语法转换（须 `target: 'node18'`）。
+3. **rolldown tree-shake 丢弃「仅具名 re-export 而未在入口内部使用」的符号**：测试从 lib/ 导入 `buildPluginMeta`/`resolveBundleDir` 报「not a function」。**规避**：入口对元数据模块用 `export * from './meta.ts'` 整体透出。
+
+### 新运行依赖（任务书要求记录）
+
+- 新增 devDependencies（均非豁免清单项，特此记录）：`@deepseek-ai/dsh-typert-protocol@0.1.0-rc.6`（TypertRemoteService/Remote 装饰器，宿主运行时由 dsh 提供，另在 peerDependencies 声明）、`@types/node@^24`（host 半使用 node:fs/module/path/os，typecheck 需要）。无新增运行时依赖。
+
 ### 其余
 
 - 无。
