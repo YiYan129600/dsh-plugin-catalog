@@ -49,4 +49,27 @@
 
 - 任务 3：客户端清单页 + 模糊搜索（tab 真页面替换任务 1 占位，L1 别名 ≥10 条含 dsh-ssh→远程/task-board→看板/whale-girl→宠物）。
 
+## 任务 3 完成（2026-02-23 本轮）
+
+### 交付
+
+- 客户端 `src/client/index.tsx` 替换任务 1 占位 tab（`settings.plugins.tab`，id `plugin-catalog`、order 20、label「插件目录」）：单列卡片（中文概括名 nameZh + 英文缩略名 + 一句话描述 + 版本徽章 + fiber 状态点 + 已启用/停用 + 展开区 + 仓库 ↗ 新窗口跳转 + homepage）、双列紧凑切换并 localStorage 持久化（键 `dsh.pluginCatalog.layout`）、搜索框防抖 200ms + useMemo、命中高亮（<mark>）、无结果给「最接近的 3 个建议」+ 快捷 chips、加载/错误/重试态。
+- 宿主 `src/routes.ts` + `src/index.ts`：`/api/plugin-catalog/list` 路由（loopback fence，仿 @linxin666/dsh-remote-web-ui 注明出处），包装 Task-2 的 PluginMetaService.list()，附用户自定义别名 `~/.dsh/plugin-aliases.json`（只读、失败降级空表）；宿主新增 `export const inject = ['webServer']`。
+- 搜索核心 `src/search.ts`（双半共用、纯函数）：L1 内置别名词表 **13 条**（含必须三条：dsh-ssh→[远程,服务器]、task-board→[看板,定时]、whale-girl/pet→[宠物,桌宠]）+ 用户别名归一化（map/数组两形态）；L2 分词子串（权重 中文名 400 > 描述 100 > keywords 60 > moduleName 30 > entryId 10）；L3 子序列打分；`moduleShortName` 照抄官方清单 tab（注明出处）；`highlightRanges` 合并区间；`suggestQueries` 无结果建议；`QUICK_CHIP_QUERIES` 快捷 chips。
+- 测试：`tests/search.test.mjs`（16 用例：三条必须命中 + 无结果建议 + L2/L3/大小写/中文名/空查询/用户别名/缩略名/别名解析/归一化/高亮/chips）、`tests/routes.test.mjs`（11 用例：路由 200/403/405/500 + fence 各类判定）、`tests/client-bundle.test.mjs`（2 用例：classic script 形状 + jsdom 执行注册 apply/inject + 样式注入一次）。
+- 验收全绿：`pnpm test` **42/42、skip 0**（5 文件）；`pnpm build` 产物 lib/index.js + lib/client.js 存在；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错；宿主 ESM 导出完整（search/routes/meta + apply/inject）。
+- 反向验证（红→绿证据见会话记录）：把 `BUILTIN_ALIAS_ENTRIES` 整块清空 → 6 用例红（含「远程」`expected [] to include '@linxin666/dsh-ssh'`、「看板」「宠物」同形、≥10 条断言红）；还原 → 42/42 全绿。
+
+### 决策记录（为什么这么走）
+
+- **客户端传输走宿主 HTTP 路由而非 typert remote**：typert 客户端命名空间需要 dsh-typert-generator 生成的 `typert.remote-client.js` contribution（本项目无生成步骤）；`ctx.remote.pluginMeta.list()` 无法直接可用。第三方参照 @linxin666/dsh-remote-web-ui 就用「宿主 `ctx.webServer.register` + 客户端 `fetch('/api/...')`」模式（loopback fence 同款），照抄并注明出处。Task-2 的 Typert Remote `list` 保留（协议层能力），HTTP 路由是其薄封装。
+- **客户端构建切换为 dsh-web-ui 家族预设**（`format: 'cjs'` + `platform: 'browser'` + outputOptions banner/footer/intro 包 `window.__ModuleLoader__.load`）：任务 1 的「入口自带 load 调用、零值导入」写法无法承载 React/外部依赖——ESM 格式会把 external 打成顶层 `import`（classic script 语法错误）。新预设下 externals（react）变 factory 内 `require()`、相对模块（search.ts）内联进 factory，产物 0 顶层 import/export（有 client-bundle 测试锁定形状）。`fix-client-bundle.mjs` 相应改为「无可剥则提示并放行」（CJS 产物本无 `export {}`）。
+- **`src/search.ts` 双半共用**：宿主 `export * from './search.ts'`（测试走 lib/index.js），客户端相对导入内联——一份实现、两处打包、测试打宿主副本。
+- **中文名来源（规划 §5.2）本任务落地为**：`meta.summary.nameZh`（Task-2 已从缓存读）> 缩略名回退；in-box 内置词表与 AI 摘要属 Task-4（SummaryService）范围，UI 已留好字段。
+- **用户别名文件只读**：`~/.dsh/plugin-aliases.json` 存在则读（归一化后随 list 响应下发客户端合并），失败静默空表——遵守「不写 ~/.dsh」。
+
+### 下一任务
+
+- 任务 4：SummaryService（README 抓取 + 用户模型提炼 + 缓存）+ UpdateCheckService（npm 优先/GitHub 回退/link 不查/每日 1 次）+ UpdateRunner（只生成命令）；客户端版本/更新徽标与按钮状态机；宿主继续往 `src/routes.ts` 挂 `/api/plugin-catalog/...` 路由。
+
 （历史：任务 0 回执见上。）
