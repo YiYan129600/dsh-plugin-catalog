@@ -39,3 +39,19 @@
 ### 其余
 
 - 无。
+
+## 任务 3（2026-02-23）— 无新增阻塞，验收全绿
+
+### 环境事实（构建方式变更，任务 4 沿用）
+
+- **客户端构建切换为 dsh-web-ui 家族预设**（`format: 'cjs'` + `platform: 'browser'` + outputOptions banner/footer/intro 包 `window.__ModuleLoader__.load({id, factory})`）：任务 1 的「入口自带 load 调用、零值导入」写法无法承载 React/外部依赖（ESM 格式会把 external 打成顶层 `import`，classic script 语法错误）。新预设下 externals（react 等）变 factory 内 `require()`（loader 模块表解析）、相对模块（src/search.ts）内联进 factory；产物 0 顶层 import/export（`tests/client-bundle.test.mjs` 已锁定形状：jsdom 里 `new Function` 执行 + stub `__ModuleLoader__` + 假 require）。`fix-client-bundle.mjs` 相应放宽：无可剥的 `export {}` 时提示并放行（CJS 产物本无）。
+- **tsdown `defineConfig` 支持配置数组**（`UserConfigExport = Awaitable<Arrayable<UserConfig> | UserConfigFn>`）：宿主/客户端两个配置按数组顺序执行，宿主 `clean: true` 在前、客户端 `clean: false` 在后。
+- **客户端→宿主数据链路走 HTTP 路由**（`ctx.webServer.register` + `fetch('/api/plugin-catalog/list')`，loopback fence）：本项目无 dsh-typert-generator 步骤，`ctx.remote.pluginMeta` 客户端命名空间无 contribution 可挂载；第三方参照 @linxin666/dsh-remote-web-ui 即此模式（已注明出处照抄 fence）。Task-4 的 summary/update 路由继续挂 `src/routes.ts`。
+
+### 新运行依赖（任务书要求记录）
+
+- 无新增依赖（react/react-dom/jsdom/@deepseek-ai/dsh-client-ui-slots 均为任务 1 已装 devDeps；未改 package.json）。
+
+### 其余
+
+- 无。
