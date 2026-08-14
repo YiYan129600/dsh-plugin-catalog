@@ -31,6 +31,7 @@ import { UpdateCheckService, buildUpdateCommand, restartCommand } from './update
 // services (task 4) reuse them.
 export * from './meta.ts'
 export * from './search.ts'
+export * from './localize.ts'
 export * from './routes.ts'
 export * from './summary.ts'
 export * from './update.ts'

@@ -33,6 +33,16 @@ import {
   type BuiltinAliasEntry,
   type CatalogEntryLike,
 } from '../search.ts'
+import {
+  TRANSLATE_DIALOG_COPY,
+  canTranslate,
+  localizeCardText,
+  persistLocalizeOn,
+  persistTranslateOptIn,
+  readLocalizeOn,
+  readTranslateOptIn,
+  type TranslateOptIn,
+} from '../localize.ts'
 
 /** The host `/api/plugin-catalog/list` payload. */
 export interface PluginCatalogListResponse {
@@ -192,6 +202,17 @@ const STYLE_CSS = `
 .dpc-chip{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:26px;border-radius:999px;padding:0 12px;cursor:pointer}
 .dpc-chip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
 .dpc-mark{background:color-mix(in srgb,var(--dsw-alias-state-warning-primary) 32%,transparent);border-radius:3px;padding:0 1px}
+.dpc-localize-toggle{display:flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:34px;border-radius:8px;padding:0 12px;cursor:pointer;white-space:nowrap;user-select:none}
+.dpc-localize-toggle input{accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;margin:0}
+.dpc-overlay{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);backdrop-filter:blur(2px)}
+.dpc-dialog{width:min(440px,calc(100vw - 48px));border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-3);border-radius:12px;box-shadow:var(--dsw-shadow-lv2);padding:18px;display:flex;flex-direction:column;gap:12px}
+.dpc-dialog h3{margin:0;font-size:15px;line-height:22px;color:var(--dsw-alias-label-primary)}
+.dpc-dialog p{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
+.dpc-dialog-actions{display:flex;gap:8px;flex-wrap:wrap}
+.dpc-dialog-actions button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:30px;border-radius:8px;padding:0 16px;cursor:pointer}
+.dpc-dialog-actions button[data-kind=primary]{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-state-business-primary)}
+.dpc-dialog-actions button:hover:not(:disabled){border-color:var(--dsw-alias-border-l1)}
+.dpc-dialog-cancel{color:var(--dsw-alias-label-tertiary)!important}
 `
 
 // Inject the stylesheet once, at factory execution (module scope lands inside
@@ -227,7 +248,8 @@ function PluginCard({
   onToggle,
   updateState,
   summaryState,
-  thirdParty,
+  translateAllowed,
+  localizeOn,
   onCheckUpdate,
   onUpdateOne,
   onGenerateSummary,
@@ -238,17 +260,19 @@ function PluginCard({
   onToggle: () => void
   updateState: UpdateUiState
   summaryState: SummaryUiState
-  /** Only third-party packages get the AI-summary button (plan D8). */
-  thirdParty: boolean
+  /** 「翻译此插件」按钮权限 (D10): 'need' → every plugin; else third-party only. */
+  translateAllowed: boolean
+  /** 汉化开关 (D10): on = Chinese-first rendering. */
+  localizeOn: boolean
   onCheckUpdate: () => void
   onUpdateOne: () => void
   onGenerateSummary: () => void
 }): JSX.Element {
   const meta = entry.meta ?? {}
-  const summary = meta.summary ?? {}
-  const shortName = moduleShortName(entry.moduleName)
-  const nameZh = summary.nameZh ?? ''
-  const descZh = summary.descZh ?? meta.description ?? ''
+  // Single source of truth for card text (D10): table > AI summary, with the
+  // 「暂无中文简介」placeholder when a Chinese description is missing.
+  const text = localizeCardText(entry.moduleName, meta, localizeOn)
+  const shortName = text.short
   const phase = entry.fiberPhase ?? 'unobserved'
   const statusLabel = FIBER_PHASE_LABELS[phase] ?? phase
   const detailId = `dpc-details-${encodeURIComponent(entry.entryId)}`
@@ -279,8 +303,8 @@ function PluginCard({
         onClick={onToggle}
       >
         <span className="dpc-status-dot" data-phase={phase} role="img" aria-label={statusLabel} title={statusLabel} />
-        <span className="dpc-name" title={nameZh !== '' ? nameZh : entry.moduleName}>
-          {nameZh !== '' ? <Highlight text={nameZh} query={query} /> : shortName}
+        <span className="dpc-name" title={text.name !== '' ? text.name : entry.moduleName}>
+          <Highlight text={text.name} query={query} />
         </span>
         <span className="dpc-short">{shortName}</span>
         {meta.version != null && <span className="dpc-version">v{meta.version}</span>}
@@ -302,12 +326,12 @@ function PluginCard({
         )}
         <span className="dpc-chevron" aria-hidden="true">▾</span>
       </button>
-      <p className="dpc-desc" title={descZh !== '' ? descZh : undefined}>
-        {descZh !== '' ? <Highlight text={descZh} query={query} /> : shortName}
+      <p className="dpc-desc" title={text.desc !== '' ? text.desc : undefined}>
+        {text.desc !== '' ? <Highlight text={text.desc} query={query} /> : shortName}
       </p>
       {open && (
         <div className="dpc-details" id={detailId}>
-          {descZh !== '' && <p>{descZh}</p>}
+          {text.desc !== '' && <p>{text.desc}</p>}
           <dl>
             <div><dt>包名</dt><dd>{entry.moduleName}</dd></div>
             <div><dt>入口</dt><dd>{entry.entryId}</dd></div>
@@ -338,21 +362,21 @@ function PluginCard({
                 更新此插件
               </button>
             )}
-            {thirdParty && (
+            {translateAllowed && (
               <button
                 type="button"
                 onClick={onGenerateSummary}
                 disabled={summaryState.status === 'estimating' || summaryState.status === 'generating' || summaryState.status === 'success'}
               >
                 {summaryState.status === 'generating'
-                  ? '生成中…'
+                  ? '翻译中…'
                   : summaryState.status === 'estimating'
                     ? '估算中…'
                     : summaryState.status === 'success'
-                      ? '摘要已生成'
+                      ? '已翻译'
                       : summaryState.status === 'estimate'
-                        ? `AI 生成中文摘要（约 ${summaryState.estimatedTokens} tokens）`
-                        : 'AI 生成中文摘要'}
+                        ? `翻译此插件（约 ${summaryState.estimatedTokens} tokens）`
+                        : '翻译此插件'}
               </button>
             )}
           </div>
@@ -399,6 +423,10 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
   const [updates, setUpdates] = useState<Record<string, UpdateUiState>>({})
   const [summaries, setSummaries] = useState<Record<string, SummaryUiState>>({})
   const [bulkState, setBulkState] = useState<{ status: 'idle' | 'checking' | 'done'; count: number }>({ status: 'idle', count: 0 })
+  // Task 1 (D10): 汉化开关（默认开）+ 一次性翻译授权选择（未设置=首次进入询问）。
+  const [localizeOn, setLocalizeOn] = useState<boolean>(() => readLocalizeOn(window.localStorage))
+  const [translateOptIn, setTranslateOptIn] = useState<TranslateOptIn | null>(() => readTranslateOptIn(window.localStorage))
+  const [translateSettingsOpen, setTranslateSettingsOpen] = useState(false)
 
   // Debounce the query (plan §5.3: 防抖 + useMemo).
   useEffect(() => {
@@ -478,6 +506,25 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
     setLayout(next)
     persistLayout(next)
   }
+
+  /** 汉化开关 (D10): 默认开，localStorage 持久化。 */
+  const toggleLocalize = (): void => {
+    const next = !localizeOn
+    setLocalizeOn(next)
+    persistLocalizeOn(window.localStorage, next)
+  }
+
+  /** 一次性翻译授权选择 (D10): 持久化并关闭询问框。 */
+  const chooseTranslateOptIn = (choice: TranslateOptIn): void => {
+    setTranslateOptIn(choice)
+    persistTranslateOptIn(window.localStorage, choice)
+    setTranslateSettingsOpen(false)
+  }
+
+  // First visit (translateOptIn unset) or the 「翻译设置」 entry: show the
+  // one-time 「是否需要中文翻译？」 dialog. When the choice was never made it
+  // is modal (must pick); when re-opened from the toolbar a cancel is offered.
+  const showTranslateDialog = state.status === 'ready' && (translateOptIn === null || translateSettingsOpen)
 
   /** One card: re-check (force) and read back that package's row. */
   const checkOne = (moduleName: string): void => {
@@ -604,11 +651,45 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
             {bulkState.status === 'done' && bulkState.count > 0 && (
               <span className="dpc-count" data-update-count={bulkState.count}>{bulkState.count} 个可更新</span>
             )}
+            <label className="dpc-localize-toggle">
+              <input
+                type="checkbox"
+                checked={localizeOn}
+                onChange={toggleLocalize}
+                aria-label="汉化"
+              />
+              汉化
+            </label>
+            <button type="button" className="dpc-layout-toggle" onClick={() => setTranslateSettingsOpen(true)}>
+              翻译设置
+            </button>
             <button type="button" className="dpc-layout-toggle" onClick={toggleLayout}>
               {layout === 'single' ? '双列紧凑' : '单列'}
             </button>
             <span className="dpc-count" data-plugin-count={results.length}>{results.length} 个</span>
           </div>
+
+          {showTranslateDialog && (
+            <div className="dpc-overlay" role="dialog" aria-modal="true" aria-label={TRANSLATE_DIALOG_COPY.title}>
+              <div className="dpc-dialog">
+                <h3>{TRANSLATE_DIALOG_COPY.title}</h3>
+                <p>{TRANSLATE_DIALOG_COPY.body}</p>
+                <div className="dpc-dialog-actions">
+                  <button type="button" data-kind="primary" onClick={() => chooseTranslateOptIn('need')}>
+                    {TRANSLATE_DIALOG_COPY.needLabel}
+                  </button>
+                  <button type="button" onClick={() => chooseTranslateOptIn('no-need')}>
+                    {TRANSLATE_DIALOG_COPY.noNeedLabel}
+                  </button>
+                  {translateOptIn !== null && (
+                    <button type="button" className="dpc-dialog-cancel" onClick={() => setTranslateSettingsOpen(false)}>
+                      取消
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {state.entries.length === 0 && <p className="dpc-status">暂无插件。</p>}
           {state.entries.length > 0 && debounced.trim() !== '' && results.length === 0 && (
@@ -637,8 +718,10 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
               {results.map((hit) => {
                 const entry = hit.entry
                 const sourceKind = entry.meta?.sourceKind
-                // Only third-party packages get the AI-summary button (D8).
-                const thirdParty = sourceKind === 'registry' || sourceKind === 'github'
+                // 「翻译此插件」按钮权限 (D10 overrides D8): 'need' opt-in →
+                // every plugin (in-box official included); otherwise only
+                // third-party registry/github packages.
+                const translateAllowed = canTranslate(sourceKind ?? null, translateOptIn)
                 return (
                   <PluginCard
                     key={entry.entryId}
@@ -648,7 +731,8 @@ function PluginCatalogTab({ list }: PluginCatalogTabProps): JSX.Element {
                     onToggle={() => setExpanded((current) => (current === entry.entryId ? null : entry.entryId))}
                     updateState={updates[entry.moduleName] ?? { status: 'idle' }}
                     summaryState={summaries[entry.entryId] ?? { status: 'idle' }}
-                    thirdParty={thirdParty}
+                    translateAllowed={translateAllowed}
+                    localizeOn={localizeOn}
                     onCheckUpdate={() => checkOne(entry.moduleName)}
                     onUpdateOne={() => updateOne(entry.moduleName)}
                     onGenerateSummary={() => generateSummary(entry)}

@@ -1,5 +1,28 @@
 # dsh-plugin-catalog — PROGRESS
 
+## 任务 1 完成（v0.2.0 轮，2026-02-23）— 汉化开关 + 翻译授权 + 内置中文表，验收全绿
+
+### 交付
+
+- `src/localize.ts`（双半共用纯模块，host `export *` 透出、client 相对导入内联）：`BUILTIN_ZH_TABLE` 内置中文表 **145 条**（nameZh ≤10 字、descZh ≤40 字；覆盖 `dsh --profile web --dump-config` 枚举的全部 **129 个 in-box 非 group** `@deepseek-ai` 模块名，逐条按 `~/.dsh/profiles/node_modules/<pkg>/package.json` 真实 description 翻译；另含核心第三方 ssh/task-board/pet/whale-girl 等 16 条）+ 汉化开关/翻译授权常量与纯函数（`readLocalizeOn` 默认开、`readTranslateOptIn`/`shouldAskTranslateOptIn` 未设置=询问、`canTranslate` need→全部/否则仅 registry+github、`zhNameFor`/`zhDescFor` 表>AI 摘要、`NO_ZH_DESC`「暂无中文简介」、`localizeCardText` 渲染契约、`TRANSLATE_DIALOG_COPY` 询问框文案含成本说明）。
+- 客户端 `src/client/index.tsx`：头部「汉化」开关（localStorage `dsh.pluginCatalog.localize` 默认开，关=英文原样：缩略名+原始 description）；首次进入（`dsh.pluginCatalog.translateOptIn` 未设置）弹一次性「是否需要中文翻译？」选择框（需要/不需要+成本说明文字），头部「翻译设置」随时重开（已选过则带取消）；卡片中文优先渲染（nameZh 主显、descZh 副显、英文缩略名保留小字、descZh 缺失→「暂无中文简介」）；「翻译此插件」按钮（原「AI 生成中文摘要」改名）：选「需要」→ 所有插件（含官方 in-box）显示，选「不需要」→ 仅第三方（D8 原样），复用 SummaryService 状态机（token 预估→生成→写缓存即时上卡）。
+- 测试：`tests/localize.test.mjs` **16 用例**（开关默认开/关闭回英文/中文表 ≥90 且含核心/覆盖全部 129 个 in-box 非 group 条目/长度约束/未设置渲染询问框/选需要→官方有翻译按钮/选不需要→官方无第三方有/未选择按 D8/持久化往返/翻译成功渲染/表优先于 AI 摘要/descZh 缺失占位/文案含成本说明）。
+- 验收全绿：`pnpm test` **106/106、skip 0**（8 文件：基线 90 + localize 16）；`pnpm build` 产物 lib/index.js（99.8 kB）+ lib/client.js（77.3 kB）存在；`pnpm typecheck` 0 错误；`npm pack --dry-run` 无错（15 文件、165.5 kB，含 src/localize.ts）。
+- 反向验证（红→绿，证据见会话记录）：把 `BUILTIN_ZH_TABLE` 临时注入为空 `{}` → **5 用例红**（汉化开启中文优先渲染、表优先于 AI 摘要、条目数 ≥90、含核心、覆盖全部 in-box；101/106）；还原 → 106/106 全绿。
+- git：本轮改动 = `src/localize.ts`（新）、`src/client/index.tsx`、`src/index.ts`（+1 行 export）、`tests/localize.test.mjs`（新），已提交；推送 + tag v0.2.0 属任务 3 收尾。
+
+### 决策记录（为什么这么走）
+
+- **localize 表键用 loader 模块名（name: 值）而非 entryId**：渲染时按 `entry.moduleName` 精确查表；`dsh-tool-subagent-control/list-agents`、`dsh-web-app/startup` 两个子路径名也按 dump 原样入表。
+- **渲染契约收敛到纯函数 `localizeCardText`**：卡片/展开区一律走它，测试直接断言契约结果（无需 DOM/React 渲染），同时保住「内置表清空→汉化渲染用例红」的反向验证路径（5 红里含渲染用例）。
+- **「翻译此插件」按钮权限 = `canTranslate(sourceKind, optIn)` 纯函数**：optIn='need' → true（含 in-box/link/unknown）；否则仅 registry/github；optIn=null（未选择、弹窗期间）按 D8 第三方-only，避免未授权时官方插件出现付费按钮。
+- **表内条目优先于 AI 摘要**：D10「内置中文表始终生效（零成本）」——翻译成功只补充表外条目，绝不覆盖表内译文。
+- **未新增任何依赖**：localize.ts 仅 import `moduleShortName`（search.ts，已存在），客户端沿用单 style 注入（client-bundle 形状测试仍绿）。
+
+### 下一任务
+
+- 任务 2：拼音搜索（自写静态音节表，`yuan cheng`→远程、`kan ban`→看板）+ 分类 chips + 导出 dsh.plugin 片段 + 公约文档与无依赖校验器。
+
 ## 任务 0 开工回执（2026-02-23）
 
 - 实测数字全部符合现状：node v24.18.0 / pnpm 11.7.0 / git 2.55.0 / gh 2.97.0（YiYan129600，token 含 repo scope）；dsh CLI 在 PATH；GUI dsh web @127.0.0.1:3080 HTTP 200；~/.dsh/profiles/web 存在。
