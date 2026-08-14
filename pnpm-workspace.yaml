@@ -1,0 +1,7 @@
+# pnpm 11 settings (the `pnpm` field in package.json is ignored; settings
+# live in this file). esbuild's postinstall only VALIDATES the platform
+# binary, which ships inside the @esbuild/win32-x64 optional dependency
+# (esbuild.exe present); the script itself is blocked by the sandbox
+# (EPERM spawn), so skip it explicitly.
+allowBuilds:
+  esbuild: false

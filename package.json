@@ -1,0 +1,71 @@
+{
+  "name": "dsh-plugin-catalog",
+  "description": "Plugin catalog for the dsh web GUI: a settings → Plugins tab that makes every third-party plugin's purpose obvious at a glance (Chinese display name + one-line description + version), fuzzy-searchable by generic concepts (远程/看板/宠物), with daily update checks, one-click updates, and GitHub links. Dual-face bundle: host half (lib/index.js) provides metadata / summary / update services, browser half (lib/client.js) renders the list.",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "^18.3.5",
+    "jsdom": "^25.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "0.22.14",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "src",
+    "cordis.patch.yml"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YiYan129600/dsh-plugin-catalog.git"
+  },
+  "scripts": {
+    "build": "tsdown && node scripts/fix-client-bundle.mjs",
+    "bundle": "tsdown && node scripts/fix-client-bundle.mjs",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsdown && node scripts/fix-client-bundle.mjs && node --import ./scripts/patch-exec-for-vitest.mjs node_modules/vitest/vitest.mjs run --configLoader native",
+    "test:watch": "node --import ./scripts/patch-exec-for-vitest.mjs node_modules/vitest/vitest.mjs --configLoader native"
+  }
+}

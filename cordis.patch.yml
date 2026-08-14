@@ -1,0 +1,13 @@
+# dsh-plugin-catalog bundle patch: inserts the dual-face plugin row into the
+# web profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
+# manifest field) over dsh-base; activate with the leader's two manual steps:
+#   dsh plugin --profile web add link:D:/work/dsh-plugin-catalog
+#   restart dsh web
+#
+# The row is a bare plugin by package name: the node half (exports ".") runs
+# in the host process, and the `dsh.client` declaration in package.json makes
+# the browser half (exports "./client", served at /plugins/plugin-catalog/client.js)
+# load in the web GUI.
+- insert:
+    - id: plugin-catalog
+      name: 'dsh-plugin-catalog'
