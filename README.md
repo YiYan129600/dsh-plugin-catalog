@@ -4,6 +4,20 @@ DSH 设置 → 插件 → 插件目录的第三方改进插件（v0.2.0）：让
 
 单包双半 bundle：宿主半 `lib/index.js`（PluginMetaService / SummaryService / UpdateCheckService / UpdateRunner + `/api/plugin-catalog/*` 路由）+ 客户端半 `lib/client.js`（设置页「插件目录」tab）。
 
+## 界面预览（v0.2.0）
+
+**首次进入的一次性翻译授权**（选「需要」→ 所有插件可用 AI 翻译；选「不需要」→ 仅第三方，官方包走零成本内置中文表）：
+
+![翻译授权询问](assets/catalog-translate-optin.png)
+
+**插件目录主界面**（中文概括名优先、版本徽章、更新状态、分类 chips、布局切换）：
+
+![插件目录主界面](assets/catalog-main.png)
+
+**模糊搜索演示**（搜「远程」命中 SSH 远程运维等 3 个相关插件）：
+
+![搜索演示](assets/catalog-search-remote.png)
+
 ## 功能说明
 
 - **一眼看懂**：每张卡片显示中文概括名 + 英文缩略名 + 一句话描述 + 版本徽章 + 启用状态；in-box 官方包用内置词表、第三方插件可一键生成 AI 中文摘要（复用 DSH 已配置的模型 API，先 token 预估后生成，缓存 key = `pkg@version`）。
