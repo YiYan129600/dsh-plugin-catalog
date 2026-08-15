@@ -57,6 +57,14 @@ describe('plugin meta resolution (task 2)', () => {
     expect(meta.sourceKind).toBe('link')
   })
 
+  it('derives repository from a github: spec when the manifest has no repository field', () => {
+    // gh-no-repo's package.json has no repository field; the dependency spec
+    // github:vlln/gh-no-repo#main is the only source (plan §5.7 fallback).
+    const meta = buildPluginMeta('gh-no-repo', { installAnchor, profileDir, spec: 'github:vlln/gh-no-repo#main', inBox: false, summaries: {} })
+    expect(meta).not.toBeNull()
+    expect(meta.repository).toBe('https://github.com/vlln/gh-no-repo')
+  })
+
   it('judges in-box sourceKind for a template bundle absent from dependencies', () => {
     // @deepseek-ai/dsh-base lives under the install anchor and is listed in
     // dsh.profile.bundles but NOT in the profile dependencies → template built-in.

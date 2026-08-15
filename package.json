@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "dsh-plugin-catalog",
-  "description": "Plugin catalog for the dsh web GUI: a settings → Plugins tab that makes every third-party plugin's purpose obvious at a glance (Chinese display name + one-line description + version), fuzzy-searchable by generic concepts (远程/看板/宠物), with daily update checks, one-click updates, and GitHub links. Dual-face bundle: host half (lib/index.js) provides metadata / summary / update services, browser half (lib/client.js) renders the list.",
-  "version": "0.2.0",
+  "description": "Plugin catalog for the dsh web GUI: a settings 鈫?Plugins tab that makes every third-party plugin's purpose obvious at a glance (Chinese display name + one-line description + version), fuzzy-searchable by generic concepts (杩滅▼/鐪嬫澘/瀹犵墿), with daily update checks, one-click updates, and GitHub links. Dual-face bundle: host half (lib/index.js) provides metadata / summary / update services, browser half (lib/client.js) renders the list.",
+  "version": "0.2.1",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

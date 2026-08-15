@@ -206,7 +206,7 @@ export function buildPluginMeta(packageName: string, options: {
     version,
     description: typeof manifest.description === 'string' ? manifest.description : null,
     keywords,
-    repository: normalizeRepository(manifest.repository),
+    repository: normalizeRepository(manifest.repository) ?? normalizeRepository(options.spec),
     homepage: typeof manifest.homepage === 'string' ? manifest.homepage : null,
     license: typeof manifest.license === 'string' ? manifest.license : null,
     sourceKind: judgeSourceKind(options.spec, options.inBox),
